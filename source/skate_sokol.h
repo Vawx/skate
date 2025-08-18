@@ -53,10 +53,18 @@ struct skate_render_mesh_t {
     vec3 scale = {1.f, 1.f, 1.f};
     
     mat4 model;
+    u8 ignore_shadow;
 };
 
 //static skate_render_mesh_t render_mesh_from_import(const skate_model_import_result_t *result);
 static void add_texture_to_render_mesh(skate_render_mesh_t *mesh, u8 *image_ptr, u32 image_width, u32 image_height, s32 image_idx, s32 sampler_idx);
+
+const r32 CAMERA_NEAR_PLANE   = 10.f;
+const r32 CAMERA_FAR_PLANE    = 1200.f;
+const u32 CASCADE_LEVEL_COUNT = 4;
+constexpr r32 shadow_cascade_levels[CASCADE_LEVEL_COUNT] = {2, 10, 25, 50};
+const r32 map_sizes[CASCADE_LEVEL_COUNT] = {4096, 2048, 1024, 512};
+
 struct skate_render_pass_t {
     sg_pass_action pass_action;
     sg_pipeline pipeline;
@@ -76,9 +84,7 @@ struct skate_render_pass_t {
     mat4 light_mat;
     
     sg_bindings pass_bindings;
-    
-    sg_pass pass;
-    sg_attachments_desc att_desc;
+    sg_pass pass[CASCADE_LEVEL_COUNT];
 };
 
 namespace RENDER_PASS {
@@ -87,12 +93,6 @@ namespace RENDER_PASS {
     const int TYPE_DYNAMIC = 2;
     const int TYPE_COUNT   = 3;
 };
-
-const r32 CAMERA_NEAR_PLANE   = 0.1f;
-const r32 CAMERA_FAR_PLANE    = 500.f;
-const u32 CASCADE_LEVEL_COUNT = 4;
-constexpr r32 shadow_cascade_levels[CASCADE_LEVEL_COUNT] = {50.f, 25.f, 10.f, 2.f};
-const r32 map_sizes[CASCADE_LEVEL_COUNT] = {4096, 2048, 1024, 512};
 
 class skate_model_import_t;
 static skate_render_mesh_t *init_render_mesh(const skate_model_import_t *import, const int RENDER_PASS);

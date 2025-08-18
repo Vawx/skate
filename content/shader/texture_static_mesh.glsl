@@ -110,7 +110,7 @@ int choose_cascade(float view_depth) {
 
 const float depth_bias = 0.0008;
 const float slope_bias = 0.0025;
-const float pcf_radius = 1.5;
+const float pcf_radius = 1.0;
 
 // 3x3 PCF over a texture array layer
 float pcf_shadow_array(vec3 uvz, int cascadeIndex, vec2 texelSize, float depthBias) {
@@ -155,7 +155,7 @@ float shadow_csm(vec3 world_position, vec3 world_normal, out int casecade_idx) {
     float bias  = depth_bias + slope_bias * slope;
 
     // Texel size for this cascade
-	vec2 css = vec2(cascade_splits_shadow_map_size[casecade_idx].z, cascade_splits_shadow_map_size[casecade_idx].w);
+	vec2 css = vec2(cascade_splits_shadow_map_size[casecade_idx].x, cascade_splits_shadow_map_size[casecade_idx].y);
     vec2 texel = 1.0 / max(css, vec2(1.0));
 
     // Percentage-Closer Filtering

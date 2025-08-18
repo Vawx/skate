@@ -52,7 +52,11 @@ static vec4 *get_frustrum_corners_world_space(mat4 proj, vec4 result[6]) {
     
     mat4 proj_view;
     glm_mat4_identity(proj_view);
-    glm_mat4_mul(sokol->default_view.view, proj, proj_view);
+    glm_mat4_mul(proj, sokol->default_view.view, proj_view);
+    
+    mat4 proj_view2;
+    glm_mat4_identity(proj_view2);
+    glm_mat4_mul(sokol->default_view.view,  proj, proj_view2);
     
     mat4 inv;
     glm_mat4_identity(inv);
@@ -63,8 +67,7 @@ static vec4 *get_frustrum_corners_world_space(mat4 proj, vec4 result[6]) {
         for (u32 y = 0; y < 2; ++y) {
             for (u32 z = 0; z < 2; ++z) {
                 vec4 val = {2.0f * x - 1.0f, 2.0f * y - 1.0f, 2.0f * z - 1.0f, 1.0f};
-                vec4 pt;
-                glm_mat4_mulv(inv, val, result[idx++]);
+                glm_mat4_mulv(proj_view2, val, result[idx++]);
             }
         }
     }
@@ -72,15 +75,16 @@ static vec4 *get_frustrum_corners_world_space(mat4 proj, vec4 result[6]) {
     return result;
 }
 
-static void get_light_view_projection_matrix(mat4 out, const r32 np, const r32 fp) {
+static void get_light_view_projection_matrix(mat4 out, const r32 np, const r32 fp, const int i) {
     skate_sokol_t *sokol = get_sokol();
-    
-    mat4 proj;
-    glm_mat4_identity(proj);
-    glm_perspective(glm_rad(sokol->default_view.fov), sapp_widthf() / sapp_heightf(), np, fp, proj);
     
     vec4 result[6] = {0};
     vec4 *result_ptr = result;
+    
+    mat4 proj;
+    glm_mat4_identity(proj);
+    glm_perspective(sokol->default_view.fov, map_sizes[i] / map_sizes[i], np, fp, proj); 
+    
     result_ptr = get_frustrum_corners_world_space(proj, result);
     
     vec3 center = {0.f,0.f,0.f};
@@ -93,8 +97,8 @@ static void get_light_view_projection_matrix(mat4 out, const r32 np, const r32 f
     vec3 light_direction;
     vec3 offset;
     
-    glm_vec3_sub(vec3{0, 0, 0}, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_pos, light_direction);
-    glm_vec3_normalize_to(light_direction, light_direction);
+    glm_vec3_sub(vec3{0,0,0}, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_pos, light_direction);
+    glm_vec3_normalize_to(vec3{20, 50, 20}, light_direction);
     glm_vec3_add(center, light_direction, offset);
     
     mat4 light_view;
@@ -137,6 +141,8 @@ static void get_light_view_projection_matrix(mat4 out, const r32 np, const r32 f
     
     glm_mat4_identity(result);
     glm_mat4_mul(light_projection, light_view, out);
+    
+    printf("");
 }
 
 static skate_sokol_t *get_sokol() {
@@ -152,15 +158,31 @@ static void init_default_level() {
         skate_directory_t dir = get_directory_for("plane.model", SKATE_DIRECTORY_MESH);
         skate_model_import_t import = skate_model_import_t(&dir);
         skate_render_mesh_t *mesh = init_render_mesh(&import, RENDER_PASS::TYPE_STATIC);
+        mesh->ignore_shadow = true;
         bind_image_to_mesh(mesh, &tf);
     }
     
     {
-        skate_directory_t dir = get_directory_for("cube.model", SKATE_DIRECTORY_MESH);
-        skate_model_import_t import = skate_model_import_t(&dir);
-        skate_render_mesh_t *mesh = init_render_mesh(&import, RENDER_PASS::TYPE_STATIC);
-        mesh->position[1] = 5.f;
-        bind_image_to_mesh(mesh, &tf);
+        vec3 def_loc;
+        def_loc[0] = 0.f;
+        def_loc[1] = 5.f;
+        def_loc[2] = 0.f;
+        
+        for(int i = 0; i < 30; ++i) {
+            r32 x = rand() % 10;
+            r32 y = rand() % 5;
+            r32 z = rand() % 10;
+            r32 nx = rand() % 100;
+            r32 nz = rand() % 100;
+            
+            skate_directory_t dir = get_directory_for("cube.model", SKATE_DIRECTORY_MESH);
+            skate_model_import_t import = skate_model_import_t(&dir);
+            skate_render_mesh_t *mesh = init_render_mesh(&import, RENDER_PASS::TYPE_STATIC);
+            mesh->position[0] = def_loc[0] + nx > 49 ? x : -x;
+            mesh->position[1] = def_loc[1] + y;
+            mesh->position[2] = def_loc[2] + nz > 49 ? z : -z;;
+            bind_image_to_mesh(mesh, &tf);
+        }
     }
 }
 
@@ -198,13 +220,36 @@ static void sokol_init() {
         sokol->render_pass[RENDER_PASS::TYPE_STATIC].mesh_buffer = alloc_buffer(sizeof(skate_render_mesh_t), MAX_MESHES_PER_RENDER_PASS);
         glm_vec3_copy(vec3{50, 50, -50}, sokol->render_pass[RENDER_PASS::TYPE_STATIC].light_pos);
         glm_vec3_sub(vec3{0,0,0}, sokol->render_pass[RENDER_PASS::TYPE_STATIC].light_pos, sokol->render_pass[RENDER_PASS::TYPE_STATIC].light_dir);
+        
+        sokol->render_pass[RENDER_PASS::TYPE_STATIC].pass[0].action = sokol->render_pass[RENDER_PASS::TYPE_STATIC].pass_action;
+        sokol->render_pass[RENDER_PASS::TYPE_STATIC].pass[0].swapchain = sglue_swapchain();;
+        
         sokol->render_pass[RENDER_PASS::TYPE_STATIC].active = 1;
     }
     
     // render pass shadow
     {
         sg_shader sshd = sg_make_shader(shadow_shader_desc(sg_query_backend()));
+        // images
+        sg_image_desc shadow_image_desc = {};
+        shadow_image_desc.usage.render_attachment = true;
+        shadow_image_desc.type = SG_IMAGETYPE_ARRAY;
+        shadow_image_desc.width = map_sizes[0];
+        shadow_image_desc.height = map_sizes[0];
+        shadow_image_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
+        shadow_image_desc.num_slices = CASCADE_LEVEL_COUNT;
+        shadow_image_desc.sample_count = 1;
+        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].map = sg_make_image(&shadow_image_desc);
+        sg_sampler_desc shadow_smp_desc = {};
+        shadow_smp_desc.min_filter = SG_FILTER_NEAREST;
+        shadow_smp_desc.mag_filter = SG_FILTER_NEAREST;
+        shadow_smp_desc.wrap_u = SG_WRAP_CLAMP_TO_EDGE;
+        shadow_smp_desc.wrap_v = SG_WRAP_CLAMP_TO_EDGE;
+        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].smp = sg_make_sampler(&shadow_smp_desc);
+        
+        // pipeline
         sg_pipeline_desc shadow_pipeline_desc = {};
+        
         shadow_pipeline_desc.layout.attrs[ATTR_shadow_a_position].format = SG_VERTEXFORMAT_FLOAT3;
         shadow_pipeline_desc.layout.attrs[ATTR_shadow_a_normal].format = SG_VERTEXFORMAT_FLOAT3;
         shadow_pipeline_desc.layout.attrs[ATTR_shadow_a_uv].format = SG_VERTEXFORMAT_FLOAT2;
@@ -216,38 +261,32 @@ static void sokol_init() {
         shadow_pipeline_desc.depth.pixel_format = SG_PIXELFORMAT_DEPTH;
         shadow_pipeline_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         shadow_pipeline_desc.depth.write_enabled = true;
-        shadow_pipeline_desc.colors[0].pixel_format = SG_PIXELFORMAT_NONE;
-        shadow_pipeline_desc.label = "shadow_pass";
+        shadow_pipeline_desc.primitive_type = SG_PRIMITIVETYPE_TRIANGLES;
+        
+        // CRITICAL: if this is not set to NONE, then color_count is overriden to 1 causing an assert/crash
+        shadow_pipeline_desc.colors[0].pixel_format = SG_PIXELFORMAT_NONE; 
+        shadow_pipeline_desc.color_count = 0;
+        
         sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pipeline = sg_make_pipeline(&shadow_pipeline_desc);
         sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass_action.depth.load_action = SG_LOADACTION_CLEAR;
         sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass_action.depth.store_action = SG_STOREACTION_STORE;
         sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass_action.depth.clear_value = 1.f;
+        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass_action.colors[0].load_action = SG_LOADACTION_DONTCARE;
+        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass_action.colors[0].store_action = SG_STOREACTION_DONTCARE;
+        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass_action.colors[0].clear_value = sg_color{0,0,0};
         sokol->render_pass[RENDER_PASS::TYPE_SHADOW].shared_buffer = &sokol->render_pass[RENDER_PASS::TYPE_STATIC].mesh_buffer;
         sokol->render_pass[RENDER_PASS::TYPE_SHADOW].use_atts_no_swapchain = true;
         
-        sg_image_desc shadow_image_desc = {};
-        shadow_image_desc.usage.render_attachment = true;
-        shadow_image_desc.type = SG_IMAGETYPE_ARRAY;
-        shadow_image_desc.width = map_sizes[0];
-        shadow_image_desc.height = map_sizes[0];
-        shadow_image_desc.pixel_format = SG_PIXELFORMAT_DEPTH;
-        shadow_image_desc.num_slices = CASCADE_LEVEL_COUNT;
-        shadow_image_desc.sample_count = 1;
-        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].map = sg_make_image(&shadow_image_desc);
-        sg_sampler_desc shadow_smp_desc = {};
-        shadow_smp_desc.min_filter = SG_FILTER_LINEAR;
-        shadow_smp_desc.mag_filter = SG_FILTER_LINEAR;
-        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].smp = sg_make_sampler(&shadow_smp_desc);
-        sg_attachments_desc att_desc = {};
-        att_desc.depth_stencil.image = sokol->render_pass[RENDER_PASS::TYPE_SHADOW].map;
-        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].atts = sg_make_attachments(&att_desc);
         glm_vec3_copy(vec3{50, 50, -50}, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_pos);
         glm_vec3_sub(vec3{0,0,0}, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_pos, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_dir);
         
-        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].att_desc.depth_stencil.image = sokol->render_pass[RENDER_PASS::TYPE_SHADOW].map;
-        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].att_desc.depth_stencil.slice = 0;
-        sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass.attachments = sg_make_attachments(&sokol->render_pass[RENDER_PASS::TYPE_SHADOW].att_desc);
-        
+        for(int i = 0; i < CASCADE_LEVEL_COUNT; ++i) {
+            sg_attachments_desc att_desc = {0};
+            att_desc.depth_stencil.image = sokol->render_pass[RENDER_PASS::TYPE_SHADOW].map;
+            att_desc.depth_stencil.slice = i;
+            sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass[i].action = sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass_action;
+            sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass[i].attachments = sg_make_attachments(&att_desc);
+        }
         sokol->render_pass[RENDER_PASS::TYPE_SHADOW].active = 1;
     }
     
@@ -297,20 +336,10 @@ static void render_mesh_for(int PASS, int binding_idx, int slice_id, skate_rende
     }
 }
 
-static bool apply_uniforms_for(const int PASS, int idx, skate_render_mesh_t *mesh) {
+static bool apply_uniforms_for(const int PASS, int idx, int i, skate_render_mesh_t *mesh) {
     skate_sokol_t *sokol = get_sokol();
     
     bool result = false;
-    
-    vec4 light_pos = {0};
-    mat4 light_proj;
-    mat4 light_view_proj;
-    { // light
-        glm_lookat(sokol->render_pass[PASS].light_pos, vec3{0,0,0}, vec3{0,1,0}, sokol->render_pass[PASS].light_mat);
-        
-        glm_ortho(-5.f, 5.f, -5.f, 5.f, 0, 128.f, light_proj);
-        glm_mat4_mul(light_proj, sokol->render_pass[PASS].light_mat, light_view_proj);
-    }
     
     glm_mat4_identity(mesh->model);
     {
@@ -327,7 +356,7 @@ static bool apply_uniforms_for(const int PASS, int idx, skate_render_mesh_t *mes
         
         glm_rotated_x(xm, mesh->rotation[0], xm);
         glm_rotated_y(ym, mesh->rotation[1], ym);
-        glm_rotated_y(zm, mesh->rotation[2], zm);
+        glm_rotated_z(zm, mesh->rotation[2], zm);
         glm_mat4_mul(xm, ym, store);
         glm_mat4_mul(store, zm, store2);
         
@@ -339,8 +368,9 @@ static bool apply_uniforms_for(const int PASS, int idx, skate_render_mesh_t *mes
         glm_mat4_identity(sm);
         glm_scale_to(sm, mesh->scale, sm);
         
-        glm_mat4_mul(sm, store2, store);
-        glm_mat4_mul(store, tm, mesh->model);
+        glm_mat4_identity(store);
+        glm_mat4_mul(tm, store2, store);
+        glm_mat4_mul(store, sm, mesh->model);
     }
     
     mat4 view_projection;
@@ -363,7 +393,7 @@ static bool apply_uniforms_for(const int PASS, int idx, skate_render_mesh_t *mes
             glm_vec3_copy(sokol->render_pass[PASS].light_pos, fs_params.eye_pos);
             glm_vec3_copy(sokol->render_pass[PASS].light_dir, fs_params.light_dir);
             glm_vec3_copy(vec3{1.f,1.f,1.f}, fs_params.light_color);
-            glm_vec3_copy(vec3{0.25f, 0.25f, 0.25f}, fs_params.light_ambient);
+            glm_vec3_copy(vec3{0.5f, 0.5f, 0.5f}, fs_params.light_ambient);
             
             for(int i = 0; i < CASCADE_LEVEL_COUNT; ++i) {
                 glm_mat4_copy(sokol->light_view_projections[i], fs_params.light_view_proj[i]);
@@ -415,11 +445,11 @@ static void render_loop() {
     for(int i = 0; i < CASCADE_LEVEL_COUNT + 1; ++i) {
         glm_mat4_identity(sokol->light_view_projections[i]);
         if(i == 0) {
-            get_light_view_projection_matrix(sokol->light_view_projections[i], CAMERA_NEAR_PLANE, shadow_cascade_levels[i]);
+            get_light_view_projection_matrix(sokol->light_view_projections[i], CAMERA_NEAR_PLANE, shadow_cascade_levels[i], i);
         } else if(i < CASCADE_LEVEL_COUNT) {
-            get_light_view_projection_matrix(sokol->light_view_projections[i], shadow_cascade_levels[i - 1], shadow_cascade_levels[i]);
+            get_light_view_projection_matrix(sokol->light_view_projections[i], shadow_cascade_levels[i - 1], shadow_cascade_levels[i], i);
         } else {
-            get_light_view_projection_matrix(sokol->light_view_projections[i], shadow_cascade_levels[i - 1], CAMERA_FAR_PLANE);
+            get_light_view_projection_matrix(sokol->light_view_projections[i], shadow_cascade_levels[i - 1], CAMERA_FAR_PLANE, i);
         }
     }
     
@@ -428,21 +458,18 @@ static void render_loop() {
         
         // shadow
         if(pass_idx == RENDER_PASS::TYPE_SHADOW) {
-            sokol->render_pass[pass_idx].pass.action = sokol->render_pass[pass_idx].pass_action;
-            sokol->render_pass[pass_idx].pass.label = "shadow_pass";
-            
             for(int i = 0; i < CASCADE_LEVEL_COUNT; ++i) {
-                sokol->render_pass[pass_idx].att_desc.depth_stencil.slice = i;
-                sg_init_attachments(sokol->render_pass[pass_idx].pass.attachments, &sokol->render_pass[pass_idx].att_desc);
-                
-                sg_begin_pass(&sokol->render_pass[pass_idx].pass);
+                sg_begin_pass(&sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass[i]);
                 sg_apply_pipeline(sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pipeline);
+                sg_apply_viewport(0, 0, map_sizes[i], map_sizes[i], true);
                 
                 skate_buffer_t *mesh_buffer = get_buffer_for_pass(pass_idx);
-                for(int m = 0; m < mesh_buffer->count(); ++m) {
+                for(int m = 0; m < mesh_buffer->count(); ++m) { 
                     skate_render_mesh_t *mesh = mesh_buffer->as_idx<skate_render_mesh_t>(m);
+                    if(mesh->ignore_shadow) {continue;}
+                    
                     for(int p = 0; p < mesh->bind.bindings_count; ++p) {
-                        if(apply_uniforms_for(pass_idx, p, mesh)) {
+                        if(apply_uniforms_for(pass_idx, p, i, mesh)) {
                             render_mesh_for(RENDER_PASS::TYPE_SHADOW, p, i, mesh); 
                         }
                     }
@@ -451,17 +478,15 @@ static void render_loop() {
             }
         }
         if(pass_idx == RENDER_PASS::TYPE_STATIC) {
-            sokol->render_pass[pass_idx].pass.action = sokol->render_pass[pass_idx].pass_action;
-            sokol->render_pass[pass_idx].pass.swapchain = sglue_swapchain();;
-            
             sg_begin_pass(sokol->render_pass[pass_idx].pass);
             sg_apply_pipeline(sokol->render_pass[pass_idx].pipeline);
+            sg_apply_viewport(0, 0, sokol->initial_window_size[0], sokol->initial_window_size[1], true);
             
             skate_buffer_t *mesh_buffer = get_buffer_for_pass(pass_idx);
             for(int m = 0; m < mesh_buffer->count(); ++m) {
                 skate_render_mesh_t *mesh = mesh_buffer->as_idx<skate_render_mesh_t>(m);
                 for(int p = 0; p < mesh->bind.bindings_count; ++p) {
-                    if(apply_uniforms_for(pass_idx, p, mesh)) {}
+                    if(apply_uniforms_for(pass_idx, p, -1, mesh)) {}
                 }
             }
             
