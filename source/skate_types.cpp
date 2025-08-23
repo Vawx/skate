@@ -1,49 +1,4 @@
 
-static skate_view_t make_view(vec3 pos, vec3 target, r32 fov) {
-    skate_view_t result = {};
-    result.fov = fov;
-    glm_vec3_copy(pos, result.position);
-    glm_vec3_copy(target, result.target);
-    update_view(&result);
-    return result;
-}
-
-static void update_view(skate_view_t *view) {
-    glm_vec3_sub(view->target, view->position, view->direction);
-    glm_vec3_normalize(view->direction);
-    
-    glm_vec3_cross(vec3{0.f, 1.f, 0.f}, view->direction, view->right);
-    glm_vec3_cross(view->direction, view->right, view->up);
-    
-    skate_sokol_t *sokol = get_sokol();
-    
-    if(view->is_ortho) {
-        glm_ortho(0.f, sokol->widthf(), 0.f, sokol->heightf(), -1.f, 1.f, view->ortho);
-    } else {
-        glm_perspective(view->fov, sokol->aspect(), 1.f, 100.f, view->perspective);
-    }
-    
-    glm_lookat(view->position, view->target, view->up, view->view);
-}
-
-static void view_tick(skate_view_t *view) {
-    skate_sokol_t *sokol = get_sokol();
-    update_view(&sokol->default_view);
-    
-    // TODO(Kyle) all views, if needed...
-}
-
-static void add_to_view(skate_view_t *view, vec3 to_add) {
-    vec3 new_pos = {};
-    glm_vec3_add(view->position, to_add, new_pos);
-    glm_vec3_copy(new_pos, view->position);
-    view_tick(view);
-}
-
-static void look_at_view(skate_view_t *view, vec3 target) {
-    glm_lookat(view->position, target, vec3{0.f, 1.f, 0.f}, view->view);
-}
-
 namespace sokol_skate {
     static u8 *mem_alloc(const s32 size) {
         u8 *ptr = nullptr;

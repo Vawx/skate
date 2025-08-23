@@ -113,6 +113,25 @@ class skate_model_import_t {
     u8 *hold_buffer;
     u8 *hold_buffer_ptr;
     u32 hold_buffer_size;
+    
+    skate_directory_t source_dir;
+};
+
+class skate_import_t {
+    public:
+    
+    skate_import_t() {}
+    skate_model_import_t *get_or_load_model(const skate_directory_t *dir);
+    
+    static skate_import_t *get() {
+        static skate_import_t r;
+        if(r.model_import_buffer.ptr == nullptr) {
+            r.model_import_buffer = alloc_buffer(sizeof(skate_model_import_t), kilo(1));
+        }
+        return &r;
+    }
+    
+    skate_buffer_t model_import_buffer;
 };
 
 #define SKATE_FBX_IMPORT_H

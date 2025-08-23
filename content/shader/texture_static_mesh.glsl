@@ -99,13 +99,13 @@ out vec4 frag_color;
 
 // Returns cascade index given view-space depth (positive)
 int choose_cascade(float view_depth) {
-    for (int i = 0; i < NUM_CASCADES - 1; ++i) {
+    for (int i = 0; i < NUM_CASCADES; ++i) {
 		// using cascade part of cascade_splits_shadow_map
         if (view_depth <= cascade_splits_shadow_map_size[i].z / cascade_splits_shadow_map_size[i].w) {
 			return i;
 		}
     }
-    return NUM_CASCADES - 1;
+    return NUM_CASCADES;
 }
 
 const float depth_bias = 0.0008;
@@ -168,6 +168,11 @@ float shadow_csm(vec3 world_position, vec3 world_normal, out int casecade_idx) {
     return 1.0 - blocked;
 }
 
+vec4 gamma(vec4 c) {
+    float p = 1.0 / 2.2;
+    return vec4(pow(c.xyz, vec3(p)), c.w);
+}
+
 void main() {
 	
 	vec3 diff = texture(sampler2D(tex, smp), uv).xyz;
@@ -178,6 +183,7 @@ void main() {
     vec3  direct = light_color * diff  * ndotl * visibility;
 
     frag_color = vec4(light_ambient * diff + direct, 1.0);
+	frag_color = gamma(frag_color);
 }
 
 #pragma sokol @end

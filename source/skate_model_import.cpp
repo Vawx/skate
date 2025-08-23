@@ -178,6 +178,9 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
         
         mesh_import_state = MESH_PATH;
         
+        memcpy(source_dir.ptr, source->ptr, source->len);
+        source_dir.len = source->len;
+        
         temp = (char*)uncompressed_data;
         
         next_state: // each state comes back up here with goto after updating state. could be a loop
@@ -480,4 +483,22 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
     failed:
     LOG_YELL("failed to load file %s", source->ptr);
     return;
+}
+
+skate_model_import_t *skate_import_t::get_or_load_model(const skate_directory_t *dir) {
+    for(int i = 0; i < model_import_buffer.count(); ++i) {
+        skate_model_import_t *import = model_import_buffer.as_idx<skate_model_import_t>(i * sizeof(model_import_buffer.type_size));
+        if(strcmp((char*)import->source_dir.ptr, (char*)dir->ptr) == 0) {
+            return import;
+        }
+    }
+    
+    if(model_import_buffer.count() * model_import_buffer.type_size >= model_import_buffer.size) {
+        LOG_PANIC("out of mesh buffer space to import to!");
+        return nullptr;
+    }
+    
+    skate_model_import_t result = skate_model_import_t(dir);
+    push_buffer(&model_import_buffer, (u8*)&result, sizeof(skate_model_import_t));
+    return model_import_buffer.as_idx<skate_model_import_t>(model_import_buffer.count() - 1);
 }

@@ -8,9 +8,11 @@
 
 #include "skate_types.h"
 #include "skate_log.h"
+#include "skate_keycodes.h"
 #include "skate_sokol.h"
 #include "skate_zlib.h"
 #include "skate_model_import.h"
+#include "skate_jolt.h"
 
 sapp_desc sokol_main(int argc, char* argv[]) {
     logger_init();
@@ -51,3 +53,4 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 #include "skate_model_import.cpp"
 #include "skate_zlib.cpp"
 #include "skate_log.cpp"
+#include "skate_jolt.cpp"

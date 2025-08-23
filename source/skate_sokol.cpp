@@ -1,4 +1,56 @@
 
+static void input_frame() {
+    skate_sokol_t *sokol = get_sokol();
+    for(int i = 0; i < input_event_list_t::events_size; ++i) {
+        input_event_t *ev = &sokol->input.list.events[i];
+        
+        if(ev->type == INPUT_EVENT_TYPE_PRESSED) {
+            ev->type = INPUT_EVENT_TYPE_HELD;
+        }
+        
+        if(ev->type == INPUT_EVENT_TYPE_RELEASED) {
+            ev->type = INPUT_EVENT_TYPE_NONE;
+            ev->id = INPUT_KEY_NONE;
+            ev->mb = INPUT_MOUSE_BUTTON_NONE;
+            ev->device = INPUT_EVENT_DEVICE_NONE;
+            ev->frame_id = sokol->last_frame_count;
+        }
+    }
+}
+
+bool is_key_pressed(sapp_keycode code) {
+    skate_sokol_t *sokol = get_sokol();
+    for(int i = 0; i < input_event_list_t::events_size; ++i) {
+        input_event_t *ev = &sokol->input.list.events[i];
+        if(ev->type & INPUT_EVENT_TYPE_PRESSED && ev->id == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_key_held(sapp_keycode code) {
+    skate_sokol_t *sokol = get_sokol();
+    for(int i = 0; i < input_event_list_t::events_size; ++i) {
+        input_event_t *ev = &sokol->input.list.events[i];
+        if(ev->type & INPUT_EVENT_TYPE_HELD && ev->id == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool is_key_released(sapp_keycode code) {
+    skate_sokol_t *sokol = get_sokol();
+    for(int i = 0; i < input_event_list_t::events_size; ++i) {
+        input_event_t *ev = &sokol->input.list.events[i];
+        if(ev->type & INPUT_EVENT_TYPE_RELEASED && ev->id == code) {
+            return true;
+        }
+    }
+    return false;
+}
+
 static skate_render_mesh_t *init_render_mesh(const skate_model_import_t *import, const int RENDER_PASS) {
     skate_sokol_t *sokol = get_sokol();
     
@@ -47,102 +99,54 @@ static void bind_image_to_mesh(skate_render_mesh_t *mesh, const skate_image_file
     bind_image_data_to_render_mesh(mesh, file->ptr, file->w, file->h, 0, 0);
 }
 
-static vec4 *get_frustrum_corners_world_space(mat4 proj, vec4 result[6]) {
-    skate_sokol_t *sokol = get_sokol();
+static skate_view_t make_view(vec3 pos, vec3 dir, r32 fov) {
+    skate_view_t result = {};
+    result.fov = fov;
+    glm_vec3_copy(pos, result.position);
     
-    mat4 proj_view;
-    glm_mat4_identity(proj_view);
-    glm_mat4_mul(proj, sokol->default_view.view, proj_view);
-    
-    mat4 proj_view2;
-    glm_mat4_identity(proj_view2);
-    glm_mat4_mul(sokol->default_view.view,  proj, proj_view2);
-    
-    mat4 inv;
-    glm_mat4_identity(inv);
-    glm_mat4_inv(proj_view, inv);
-    
-    int idx = 0;
-    for (u32 x = 0; x < 2; ++x) {
-        for (u32 y = 0; y < 2; ++y) {
-            for (u32 z = 0; z < 2; ++z) {
-                vec4 val = {2.0f * x - 1.0f, 2.0f * y - 1.0f, 2.0f * z - 1.0f, 1.0f};
-                glm_mat4_mulv(proj_view2, val, result[idx++]);
-            }
-        }
-    }
-    
+    vec3 to_z;
+    glm_vec3_sub(vec3{0,0,0}, result.position, to_z);
+    glm_vec3_normalize_to(to_z, result.direction);
+    update_view(&result);
     return result;
 }
 
-static void get_light_view_projection_matrix(mat4 out, const r32 np, const r32 fp, const int i) {
+static void update_view(skate_view_t *view) {
+    glm_vec3_normalize_to(view->direction, view->direction);
+    glm_vec3_cross(vec3{0.f, 1.f, 0.f}, view->direction, view->right);
+    glm_vec3_cross(view->direction, view->right, view->up);
+    
     skate_sokol_t *sokol = get_sokol();
     
-    vec4 result[6] = {0};
-    vec4 *result_ptr = result;
-    
-    mat4 proj;
-    glm_mat4_identity(proj);
-    glm_perspective(sokol->default_view.fov, map_sizes[i] / map_sizes[i], np, fp, proj); 
-    
-    result_ptr = get_frustrum_corners_world_space(proj, result);
-    
-    vec3 center = {0.f,0.f,0.f};
-    for(int i = 0; i < 6; ++i) {
-        vec3 rr = {result[i][0], result[i][1], result[i][2]};
-        glm_vec3_add(center, rr, center);
-    }
-    glm_vec3_divs(center, 6.f, center);
-    
-    vec3 light_direction;
-    vec3 offset;
-    
-    glm_vec3_sub(vec3{0,0,0}, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_pos, light_direction);
-    glm_vec3_normalize_to(vec3{20, 50, 20}, light_direction);
-    glm_vec3_add(center, light_direction, offset);
-    
-    mat4 light_view;
-    glm_mat4_identity(light_view);
-    glm_lookat(offset, center, vec3{0,1,0}, light_view);
-    
-    r32 min_x = 100000;
-    r32 max_x = -100000;
-    r32 min_y = 100000;
-    r32 max_y = -100000;
-    r32 min_z = 100000;
-    r32 max_z = -100000;
-    for (int i = 0; i < 6; ++i) {
-        vec4 trf;
-        glm_mat4_mulv(light_view, result[i], trf);
-        
-        min_x = glm_min(min_x, trf[0]);
-        max_x = glm_max(max_x, trf[0]);
-        min_y = glm_min(min_y, trf[1]);
-        max_y = glm_max(max_y, trf[1]);
-        min_z = glm_min(min_z, trf[2]);
-        max_z = glm_max(max_z, trf[2]);
-    }
-    
-    // NOTE(Kyle): Tune this parameter according to the scene
-    r32 mult_z = 10.0f;
-    if (min_z < 0) {
-        min_z *= mult_z;
+    if(view->is_ortho) {
+        glm_ortho(0.f, sokol->widthf(), 0.f, sokol->heightf(), -1.f, 1.f, view->ortho);
     } else {
-        min_z /= mult_z;
-    } if (max_z < 0) {
-        max_z /= mult_z;
-    } else {
-        max_z *= mult_z;
+        glm_perspective(view->fov, sokol->aspect(), 1.f, 100.f, view->perspective);
     }
     
-    mat4 light_projection;
-    glm_mat4_identity(light_projection);
-    glm_ortho(min_x, max_x, min_y, max_y, min_z, max_z, light_projection);
+    vec3 fwd;
+    glm_vec3_mulf(view->direction, view->movement_speed, fwd);
+    glm_vec3_add(view->position, fwd, fwd);
     
-    glm_mat4_identity(result);
-    glm_mat4_mul(light_projection, light_view, out);
+    if(is_key_pressed(SKATE_KEYCODE_LOOK_ORIGIN) || is_key_held(SKATE_KEYCODE_LOOK_ORIGIN)) {
+        vec3 to_z;
+        glm_vec3_sub(vec3{0,0,0}, view->position, to_z);
+        glm_vec3_normalize_to(to_z, view->direction);
+        glm_lookat(view->position, view->direction, view->up, view->view);
+    } else {
+        glm_lookat(view->position, fwd, view->up, view->view);
+    }
     
-    printf("");
+    if(view->func) {
+        view->func((u8*)view);
+    }
+}
+
+static void view_tick(skate_view_t *view) {
+    skate_sokol_t *sokol = get_sokol();
+    update_view(&sokol->default_view);
+    
+    // TODO(Kyle) all views, if needed...
 }
 
 static skate_sokol_t *get_sokol() {
@@ -150,16 +154,36 @@ static skate_sokol_t *get_sokol() {
     return &sst;
 }
 
+void bind_to_input(input_response_binding binding_func, input_event_list_filter_t *filter) {
+    skate_sokol_t *sokol = get_sokol();
+    
+    sokol->input.bindings[sokol->input.bindings_idx].binding_func = binding_func;
+    memcpy(sokol->input.bindings[sokol->input.bindings_idx].filter.key_events, filter->key_events, sizeof(filter->key_events));
+    sokol->input.bindings[sokol->input.bindings_idx].filter.idx = filter->idx;
+    ++sokol->input.bindings_idx;
+}
+
+#include <ctime>
+
 static void init_default_level() {
     skate_directory_t tfdir = skate_directory_t("grid_64_64.png", SKATE_DIRECTORY_TEXTURE);
     skate_image_file_t tf = skate_image_file_t(&tfdir);
     
     {
         skate_directory_t dir = get_directory_for("plane.model", SKATE_DIRECTORY_MESH);
-        skate_model_import_t import = skate_model_import_t(&dir);
-        skate_render_mesh_t *mesh = init_render_mesh(&import, RENDER_PASS::TYPE_STATIC);
-        mesh->ignore_shadow = true;
-        bind_image_to_mesh(mesh, &tf);
+        skate_import_t *im = skate_import_t::get();
+        skate_model_import_t *model_import = im->get_or_load_model(&dir);
+        
+        for(int i = 0; i < 4; ++i) {
+            skate_render_mesh_t *mesh = init_render_mesh(model_import, RENDER_PASS::TYPE_STATIC);
+            if(i % 2 == 0) {
+                mesh->position[2] = 28 * -i;
+            } else {
+                mesh->position[0] = 28 * -i;
+            }
+            mesh->ignore_shadow = true;
+            bind_image_to_mesh(mesh, &tf);
+        }
     }
     
     {
@@ -167,6 +191,8 @@ static void init_default_level() {
         def_loc[0] = 0.f;
         def_loc[1] = 5.f;
         def_loc[2] = 0.f;
+        
+        srand(time(0));
         
         for(int i = 0; i < 30; ++i) {
             r32 x = rand() % 10;
@@ -176,14 +202,167 @@ static void init_default_level() {
             r32 nz = rand() % 100;
             
             skate_directory_t dir = get_directory_for("cube.model", SKATE_DIRECTORY_MESH);
-            skate_model_import_t import = skate_model_import_t(&dir);
-            skate_render_mesh_t *mesh = init_render_mesh(&import, RENDER_PASS::TYPE_STATIC);
+            skate_import_t *im = skate_import_t::get();
+            skate_model_import_t *model_import = im->get_or_load_model(&dir);
+            
+            skate_render_mesh_t *mesh = init_render_mesh(model_import, RENDER_PASS::TYPE_STATIC);
             mesh->position[0] = def_loc[0] + nx > 49 ? x : -x;
             mesh->position[1] = def_loc[1] + y;
             mesh->position[2] = def_loc[2] + nz > 49 ? z : -z;;
+            mesh->rotation[0] = -nx;
+            mesh->rotation[1] = y;
+            mesh->rotation[2] = -nz;
             bind_image_to_mesh(mesh, &tf);
         }
     }
+}
+
+static void default_view_input_callback(const input_binding_key_or_button_t key_or_button, input_event_type input_type, input_event_list_filter_t *filter) {
+    skate_sokol_t *sokol = get_sokol();
+    skate_view_t *view = &sokol->default_view;
+    
+    r32 dt = sapp_frame_duration();
+    
+    if(key_or_button.device == INPUT_EVENT_DEVICE_KEYBOARD) {
+        
+        vec3 movement_len_fwd = {0};
+        if(glm_vec3_len(view->velocity)) {
+            glm_vec3_mulf(view->direction, view->movement_speed * view->movement_accel, movement_len_fwd);
+        } else {
+            glm_vec3_mulf(view->direction, view->movement_speed * view->movement_accel, movement_len_fwd);
+        }
+        
+        vec3 movement_len_rgt = {0};
+        glm_vec3_mulf(view->right, view->movement_speed, movement_len_rgt);
+        
+        switch(key_or_button.code) {
+            case SAPP_KEYCODE_W: {
+                glm_vec3_add(view->frame_impulse, movement_len_fwd, view->frame_impulse);
+            } break;
+            case SAPP_KEYCODE_A: {
+                glm_vec3_add(view->frame_impulse, movement_len_rgt, view->frame_impulse);
+            } break;
+            case SAPP_KEYCODE_S: {
+                glm_vec3_sub(view->frame_impulse, movement_len_fwd, view->frame_impulse);
+            } break;
+            case SAPP_KEYCODE_D: {
+                glm_vec3_sub(view->frame_impulse, movement_len_rgt, view->frame_impulse);
+            } break;
+        }
+    }
+    if(key_or_button.device == INPUT_EVENT_DEVICE_MOUSE) {
+        switch(key_or_button.mb) {
+            case SAPP_MOUSEBUTTON_LEFT: {
+                
+            } break;
+            case SAPP_MOUSEBUTTON_MIDDLE: {
+                
+            } break;
+            case SAPP_MOUSEBUTTON_RIGHT: {
+                r32 xoffset = sokol->global_mouse_pos_data.x - sokol->global_mouse_pos_data.lx;
+                r32 yoffset = sokol->global_mouse_pos_data.ly - sokol->global_mouse_pos_data.y; 
+                
+                xoffset *= view->rotation_speed * sapp_frame_duration();
+                yoffset *= view->rotation_speed * sapp_frame_duration();
+                
+                view->yaw   += xoffset;
+                view->pitch += yoffset;
+                
+                if(view->pitch > 89.0f) {view->pitch = 89.0f;}
+                if(view->pitch < -89.0f) {view->pitch = -89.0f;}
+                
+                vec3 direction = {0,0,0};
+                direction[0] = cos(glm_rad(view->yaw)) * cos(glm_rad(view->pitch));
+                direction[1] = sin(glm_rad(view->pitch));
+                direction[2] = sin(glm_rad(view->yaw)) * cos(glm_rad(view->pitch));
+                glm_normalize_to(direction, view->direction);
+            } break;
+        }
+    }
+}
+
+static void init_input() {
+    skate_sokol_t *sokol = get_sokol();
+    for(int i = 0; i < input_event_list_t::events_size; ++i) {
+        input_event_t *ev = &sokol->input.list.events[i];
+        ev->type = INPUT_EVENT_TYPE_NONE;
+        ev->id = INPUT_KEY_NONE;
+        ev->mb = INPUT_MOUSE_BUTTON_NONE;
+        ev->device = INPUT_EVENT_DEVICE_NONE;
+        ev->frame_id = 0;
+    }
+}
+
+static void default_view_velocity_tick(u8 *ptr) {
+    skate_view_t *svt = (skate_view_t*)ptr;
+    r32 dt = sapp_frame_duration();
+    
+    r32 new_vx = 0.f;
+    r32 new_vy = 0.f;
+    r32 new_vz = 0.f;
+    
+    r32 ll = glm_vec3_len(svt->frame_impulse);
+    if(ll) {
+        new_vx = svt->frame_impulse[0] * dt; 
+        new_vy = svt->frame_impulse[1] * dt;
+        new_vz = svt->frame_impulse[2] * dt;
+        
+        svt->velocity[0] += new_vx;
+        svt->velocity[1] += new_vy;
+        svt->velocity[2] += new_vz;
+    } else {
+        // friction to vel, when not moving from input
+        svt->velocity[0] -= svt->movement_friction * svt->velocity[0] * dt;
+        svt->velocity[1] -= svt->movement_friction * svt->velocity[1] * dt;
+        svt->velocity[2] -= svt->movement_friction * svt->velocity[2] * dt;
+        
+    }
+    
+    // set pos
+    vec3 new_pos = {0,0,0};
+    new_pos[0] += svt->position[0] + (svt->velocity[0] * dt);
+    new_pos[1] += svt->position[1] + (svt->velocity[1] * dt);
+    new_pos[2] += svt->position[2] + (svt->velocity[2] * dt);
+    
+    svt->position[0] = new_pos[0];
+    svt->position[1] = new_pos[1];
+    svt->position[2] = new_pos[2];
+    
+    // max speed
+    r32 len = glm_vec3_len(svt->velocity);
+    if (len > svt->movement_speed) {
+        r32 scale = svt->movement_speed / len;
+        svt->velocity[0] *= scale;
+        svt->velocity[1] *= scale;
+        svt->velocity[2] *= scale;
+    } 
+    glm_vec3_zero(svt->frame_impulse);
+}
+
+static void init_default_view() {
+    skate_sokol_t *sokol = get_sokol();
+    sokol->default_view = make_view(vec3{0.f, 30.f, 20.f}, vec3{0.f, 0.f, 1.f}, 70);
+    
+    input_event_list_filter_t *flt = &sokol->default_view.filter;
+    
+    flt->key_events[flt->idx].listen_key = SKATE_KEYCODE_FWD;
+    flt->key_events[flt->idx++].event_type = PRESSED_AND_HELD;
+    
+    flt->key_events[flt->idx].listen_key = SKATE_KEYCODE_LFT;
+    flt->key_events[flt->idx++].event_type = PRESSED_AND_HELD;
+    
+    flt->key_events[flt->idx].listen_key = SKATE_KEYCODE_BCK;
+    flt->key_events[flt->idx++].event_type = PRESSED_AND_HELD;
+    
+    flt->key_events[flt->idx].listen_key = SKATE_KEYCODE_RGT;
+    flt->key_events[flt->idx++].event_type = PRESSED_AND_HELD;
+    
+    flt->key_events[flt->idx].listen_mb = SKATE_BUTTON_RIGHT;
+    flt->key_events[flt->idx].event_type = PRESSED_AND_HELD;
+    flt->key_events[flt->idx++].device = INPUT_EVENT_DEVICE_MOUSE;
+    
+    bind_to_input((input_response_binding)default_view_input_callback, &sokol->default_view.filter);
+    sokol->default_view.func = default_view_velocity_tick;
 }
 
 static void sokol_init() {
@@ -196,8 +375,6 @@ static void sokol_init() {
     
     sokol->default_pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
     sokol->default_pass_action.colors[0].clear_value = {0.4f, 0.4f, 0.4f, 1.f};
-    
-    sokol->default_view = make_view(vec3{0.f, 30.f, 20.f}, vec3{0.f, 0.f, 0.f}, 70);
     
     // render pass static
     {
@@ -213,12 +390,13 @@ static void sokol_init() {
         pipeline_desc.face_winding = SG_FACEWINDING_CCW;
         pipeline_desc.depth.compare = SG_COMPAREFUNC_LESS_EQUAL;
         pipeline_desc.depth.write_enabled = true;
+        pipeline_desc.sample_count = 2;
         pipeline_desc.label = "static_pass";
         sokol->render_pass[RENDER_PASS::TYPE_STATIC].pipeline = sg_make_pipeline(&pipeline_desc);
         sokol->render_pass[RENDER_PASS::TYPE_STATIC].pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;
         sokol->render_pass[RENDER_PASS::TYPE_STATIC].pass_action.colors[0].clear_value = {0.4f, 0.4f, 0.4f, 1.f};
         sokol->render_pass[RENDER_PASS::TYPE_STATIC].mesh_buffer = alloc_buffer(sizeof(skate_render_mesh_t), MAX_MESHES_PER_RENDER_PASS);
-        glm_vec3_copy(vec3{50, 50, -50}, sokol->render_pass[RENDER_PASS::TYPE_STATIC].light_pos);
+        glm_vec3_copy(vec3{-15, 40, -12}, sokol->render_pass[RENDER_PASS::TYPE_STATIC].light_pos);
         glm_vec3_sub(vec3{0,0,0}, sokol->render_pass[RENDER_PASS::TYPE_STATIC].light_pos, sokol->render_pass[RENDER_PASS::TYPE_STATIC].light_dir);
         
         sokol->render_pass[RENDER_PASS::TYPE_STATIC].pass[0].action = sokol->render_pass[RENDER_PASS::TYPE_STATIC].pass_action;
@@ -277,7 +455,7 @@ static void sokol_init() {
         sokol->render_pass[RENDER_PASS::TYPE_SHADOW].shared_buffer = &sokol->render_pass[RENDER_PASS::TYPE_STATIC].mesh_buffer;
         sokol->render_pass[RENDER_PASS::TYPE_SHADOW].use_atts_no_swapchain = true;
         
-        glm_vec3_copy(vec3{50, 50, -50}, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_pos);
+        glm_vec3_copy(vec3{-15, 40, -12}, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_pos);
         glm_vec3_sub(vec3{0,0,0}, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_pos, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_dir);
         
         for(int i = 0; i < CASCADE_LEVEL_COUNT; ++i) {
@@ -305,6 +483,11 @@ static void sokol_init() {
     sokol->default_image = sg_make_image(&image_desc);
     sg_sampler_desc sampler = {};
     sokol->default_texture = sg_make_sampler(&sampler);
+    
+    init_input();
+    init_default_view();
+    
+    skate_jolt_init(get_jolt());
     
     // default test level
     init_default_level();
@@ -399,8 +582,8 @@ static bool apply_uniforms_for(const int PASS, int idx, int i, skate_render_mesh
                 glm_mat4_copy(sokol->light_view_projections[i], fs_params.light_view_proj[i]);
                 
                 vec4 cssms = {0};
-                cssms[0] = map_sizes[i];
-                cssms[1] = map_sizes[i];
+                cssms[0] = map_sizes[0];
+                cssms[1] = map_sizes[0];
                 cssms[2] = CAMERA_FAR_PLANE;
                 cssms[3] = shadow_cascade_levels[i];
                 glm_vec4_copy(cssms, fs_params.cascade_splits_shadow_map_size[i]);
@@ -438,6 +621,94 @@ static skate_buffer_t *get_buffer_for_pass(int PASS) {
     return mesh_buffer;
 }
 
+static vec4 *get_frustrum_corners_world_space(mat4 proj, vec4 result[6]) {
+    skate_sokol_t *sokol = get_sokol();
+    
+    mat4 proj_view;
+    glm_mat4_identity(proj_view);
+    glm_mat4_mul(sokol->default_view.view, proj, proj_view);
+    
+    mat4 inv;
+    glm_mat4_identity(inv);
+    glm_mat4_inv(proj_view, inv);
+    
+    int idx = 0;
+    for (u32 x = 0; x < 2; ++x) {
+        for (u32 y = 0; y < 2; ++y) {
+            for (u32 z = 0; z < 2; ++z) {
+                vec4 val = {2.0f * x - 1.0f, 2.0f * y - 1.0f, 2.0f * z - 1.0f, 1.0f};
+                glm_mat4_mulv(inv, val, result[idx++]);
+            }
+        }
+    }
+    
+    return result;
+}
+
+static void get_light_view_projection_matrix(mat4 out, const r32 np, const r32 fp, const int i) {
+    skate_sokol_t *sokol = get_sokol();
+    
+    vec4 result[6] = {0};
+    vec4 *result_ptr = result;
+    
+    mat4 proj;
+    glm_mat4_identity(proj);
+    glm_perspective(glm_rad(40), map_sizes[i] / map_sizes[i], np, fp, proj); 
+    
+    result_ptr = get_frustrum_corners_world_space(proj, result);
+    
+    vec3 center = {0.f,0.f,0.f};
+    for(int i = 0; i < 6; ++i) {
+        vec3 rr = {result[i][0], result[i][1], result[i][2]};
+        glm_vec3_add(center, rr, center);
+    }
+    glm_vec3_divs(center, 6.f, center);
+    
+    vec3 offset;
+    glm_vec3_add(center, sokol->render_pass[RENDER_PASS::TYPE_SHADOW].light_dir, offset);
+    
+    mat4 light_view;
+    glm_mat4_identity(light_view);
+    glm_lookat(offset, center, vec3{0,1,0}, light_view);
+    
+    r32 min_x = 100000;
+    r32 max_x = -100000;
+    r32 min_y = 100000;
+    r32 max_y = -100000;
+    r32 min_z = 100000;
+    r32 max_z = -100000;
+    for (int i = 0; i < 6; ++i) {
+        vec4 trf;
+        glm_mat4_mulv(light_view, result[i], trf);
+        
+        min_x = glm_min(min_x, trf[0]);
+        max_x = glm_max(max_x, trf[0]);
+        min_y = glm_min(min_y, trf[1]);
+        max_y = glm_max(max_y, trf[1]);
+        min_z = glm_min(min_z, trf[2]);
+        max_z = glm_max(max_z, trf[2]);
+    }
+    
+    // NOTE(Kyle): Tune this parameter according to the scene
+    r32 mult_z = 10.0f;
+    if (min_z < 0) {
+        min_z *= mult_z;
+    } else {
+        min_z /= mult_z;
+    } if (max_z < 0) {
+        max_z /= mult_z;
+    } else {
+        max_z *= mult_z;
+    }
+    
+    mat4 light_projection;
+    glm_mat4_identity(light_projection);
+    glm_ortho(min_x, max_x, min_y, max_y, min_z, max_z, light_projection);
+    
+    glm_mat4_identity(result);
+    glm_mat4_mul(light_projection, light_view, out);
+}
+
 static void render_loop() {
     skate_sokol_t *sokol = get_sokol();
     
@@ -461,7 +732,6 @@ static void render_loop() {
             for(int i = 0; i < CASCADE_LEVEL_COUNT; ++i) {
                 sg_begin_pass(&sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pass[i]);
                 sg_apply_pipeline(sokol->render_pass[RENDER_PASS::TYPE_SHADOW].pipeline);
-                sg_apply_viewport(0, 0, map_sizes[i], map_sizes[i], true);
                 
                 skate_buffer_t *mesh_buffer = get_buffer_for_pass(pass_idx);
                 for(int m = 0; m < mesh_buffer->count(); ++m) { 
@@ -474,13 +744,13 @@ static void render_loop() {
                         }
                     }
                 }
+                
                 sg_end_pass();
             }
         }
         if(pass_idx == RENDER_PASS::TYPE_STATIC) {
             sg_begin_pass(sokol->render_pass[pass_idx].pass);
             sg_apply_pipeline(sokol->render_pass[pass_idx].pipeline);
-            sg_apply_viewport(0, 0, sokol->initial_window_size[0], sokol->initial_window_size[1], true);
             
             skate_buffer_t *mesh_buffer = get_buffer_for_pass(pass_idx);
             for(int m = 0; m < mesh_buffer->count(); ++m) {
@@ -497,11 +767,75 @@ static void render_loop() {
     sg_commit();
 }
 
+static bool passes_filter(input_event_list_filter_t *filter, input_binding_key_or_button_t key_or_button, input_event_type event_type) {
+    if(!filter) {return true;} /// passing null is no filter.
+    
+    if(filter->idx == 0) {
+        LOG_YELL("passing in a filter that has no elements. pass nullptr if for some reason this has to be called with an empty one");
+        return false;
+    }
+    
+    // loop all filter events up to its idx
+    // each filter has 1 key and 1 event type (pressed, held, etc)
+    // ie: filter for 'w' on pressed and 'a' on released is easy
+    
+    /* TODO(Kyle): 
+    1): pressing 1 key / button cancels the input of another key / button 
+     2): input modifiers (alt, shift, control + some key)
+ controller input modifiers (any_button + any_other_button (or maybe dpad + any_other_button))
+*/
+    
+    for(int i = 0; i < filter->idx; ++i) {
+        input_event_filter_item_t *item = &filter->key_events[i];
+        if(item->device == INPUT_EVENT_DEVICE_KEYBOARD) {
+            if(item->listen_key == key_or_button.code) {
+                if (item->event_type == INPUT_EVENT_TYPE_NONE) {
+                    return false;
+                }
+                if (item->event_type & event_type || item->event_type & INPUT_EVENT_TYPE_ANY) {
+                    return true;
+                }
+            }
+        }
+        if(item->device == INPUT_EVENT_DEVICE_MOUSE) {
+            if(item->listen_mb == key_or_button.mb) {
+                if(item->event_type == INPUT_EVENT_TYPE_NONE) {
+                    return false;
+                }
+                if(item->event_type & event_type || item->event_type & INPUT_EVENT_TYPE_ANY) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
 static void sokol_frame() {
     skate_sokol_t *sokol = get_sokol();
-    view_tick(&sokol->default_view);
     
+    for(int i = 0; i < sokol->input.bindings_idx; ++i) {
+        response_binding_handle_t *bind = &sokol->input.bindings[i];
+        for(int j = 0; j < input_event_list_t::events_size; ++j) {
+            input_event_t *ev = &sokol->input.list.events[j];
+            if(ev->id == INPUT_KEY_NONE) {continue;}
+            input_binding_key_or_button_t kob = {};
+            kob.device = ev->device;
+            kob.code = ev->device == INPUT_EVENT_DEVICE_KEYBOARD ? (sapp_keycode)ev->id : (sapp_keycode)ev->mb;
+            memcpy(&kob.mouse_pos_data, &ev->mouse_pos_data, sizeof(input_mouse_pos_data_t));
+            
+            if(passes_filter(&bind->filter, kob, ev->type)) {
+                bind->binding_func(kob, ev->type, &bind->filter);
+            }
+        }
+    }
+    
+    skate_jolt_frame(get_jolt());
+    
+    view_tick(&sokol->default_view);
     render_loop();
+    
+    input_frame(); // this is not polling for input, it is cleanup 
 }
 
 static void sokol_cleanup() {
@@ -510,10 +844,151 @@ static void sokol_cleanup() {
     free_buffer(&sokol->render_pass[RENDER_PASS::TYPE_SHADOW].mesh_buffer);
     free_buffer(&sokol->render_pass[RENDER_PASS::TYPE_DYNAMIC].mesh_buffer);
     
+    skate_jolt_shutdown(get_jolt());
+    
     logger_shutdown();
     sg_shutdown();
 }
 
 static void sokol_event(const sapp_event *event) {
+    skate_sokol_t *sokol = get_sokol();
+    sokol->last_frame_count = event->frame_count;
     
+    switch(event->type) {
+        case SAPP_EVENTTYPE_KEY_DOWN: {
+            if(!is_key_pressed(event->key_code) && !is_key_held(event->key_code) && !is_key_released(event->key_code)) {
+                for(int i = 0; i < input_event_list_t::events_size; ++i) {
+                    input_event_t *ev = &sokol->input.list.events[i];
+                    if(ev->id == INPUT_KEY_NONE) {
+                        ev->type = INPUT_EVENT_TYPE_PRESSED;
+                        ev->id = event->key_code;
+                        ev->device = INPUT_EVENT_DEVICE_KEYBOARD;
+                        ev->frame_id = sokol->last_frame_count;
+                        break;
+                    }
+                }
+                break;
+            }
+        } break;
+        case SAPP_EVENTTYPE_KEY_UP: {
+            if(is_key_pressed(event->key_code) || is_key_held(event->key_code)) {
+                for(int i = 0; i < input_event_list_t::events_size; ++i) {
+                    input_event_t *ev = &sokol->input.list.events[i];
+                    if(ev->id == event->key_code && ev->frame_id != sokol->last_frame_count) {
+                        ev->type = INPUT_EVENT_TYPE_RELEASED;
+                    }
+                }
+            } else {
+                LOG_YELL("releasing a key that doesnt appear to be pressed or held!");
+            }
+        } break;
+        case SAPP_EVENTTYPE_CHAR: {
+            
+        } break;
+        case SAPP_EVENTTYPE_MOUSE_DOWN: {
+            for(int i = 0; i < input_event_list_t::events_size; ++i) {
+                input_event_t *ev = &sokol->input.list.events[i];
+                if(ev->mb == event->mouse_button) {
+                    return;
+                }
+            }
+            
+            for(int i = 0; i < input_event_list_t::events_size; ++i) {
+                input_event_t *ev = &sokol->input.list.events[i];
+                if(ev->mb == INPUT_KEY_NONE) {
+                    ev->type = INPUT_EVENT_TYPE_PRESSED;
+                    ev->mb = (input_mouse_button)event->mouse_button;
+                    ev->device = INPUT_EVENT_DEVICE_MOUSE;
+                    ev->frame_id = sokol->last_frame_count;
+                    ev->mouse_pos_data.dx = sokol->global_mouse_pos_data.dx;
+                    ev->mouse_pos_data.dy = sokol->global_mouse_pos_data.dy;
+                    ev->mouse_pos_data.x = sokol->global_mouse_pos_data.x;
+                    ev->mouse_pos_data.y = sokol->global_mouse_pos_data.y;
+                    break;
+                }
+            }
+        } break;
+        case SAPP_EVENTTYPE_MOUSE_UP: {
+            bool found = false;
+            for(int i = 0; i < input_event_list_t::events_size; ++i) {
+                input_event_t *ev = &sokol->input.list.events[i];
+                if(ev->mb == event->mouse_button) {
+                    found = true;
+                    break;
+                }
+            }
+            
+            if(found) {
+                for(int i = 0; i < input_event_list_t::events_size; ++i) {
+                    input_event_t *ev = &sokol->input.list.events[i];
+                    if(ev->mb == event->mouse_button) {
+                        ev->type = INPUT_EVENT_TYPE_RELEASED;
+                        ev->frame_id = sokol->last_frame_count;
+                        break;
+                    }
+                }
+            }
+            
+            memset(&sokol->global_mouse_pos_data, 0, sizeof(input_mouse_pos_data_t));
+        } break;
+        case SAPP_EVENTTYPE_MOUSE_SCROLL: {
+            
+        } break;
+        case SAPP_EVENTTYPE_MOUSE_MOVE: {
+            sokol->global_mouse_pos_data.dx = sokol->global_mouse_pos_data.x - event->mouse_x;
+            sokol->global_mouse_pos_data.dy = sokol->global_mouse_pos_data.y - event->mouse_y;
+            sokol->global_mouse_pos_data.lx = sokol->global_mouse_pos_data.x;
+            sokol->global_mouse_pos_data.ly = sokol->global_mouse_pos_data.y;
+            sokol->global_mouse_pos_data.x = event->mouse_x;
+            sokol->global_mouse_pos_data.y = event->mouse_y;
+            
+        } break;
+        case SAPP_EVENTTYPE_MOUSE_ENTER: {
+            
+        } break;
+        case SAPP_EVENTTYPE_MOUSE_LEAVE: {
+            
+        } break;
+        case SAPP_EVENTTYPE_TOUCHES_BEGAN: {
+            
+        } break;
+        case SAPP_EVENTTYPE_TOUCHES_MOVED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_TOUCHES_ENDED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_TOUCHES_CANCELLED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_RESIZED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_ICONIFIED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_RESTORED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_FOCUSED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_UNFOCUSED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_SUSPENDED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_RESUMED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_QUIT_REQUESTED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_CLIPBOARD_PASTED: {
+            
+        } break;
+        case SAPP_EVENTTYPE_FILES_DROPPED: {
+        } break;
+    }
 }

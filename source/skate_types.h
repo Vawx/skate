@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <malloc.h>
+#include <stdlib.h>
 
 #define s_pi 3.14159265358979323846
 #define s_2_pi (2.0 * s_pi)
@@ -61,30 +63,11 @@ typedef double r64;
 
 #include "cglm/cglm.h"
 
-struct skate_view_t {
-    vec3 position;
-    vec3 target;
-    
-    vec3 direction;
-    vec3 right;
-    vec3 up;
-    
-    r32 fov;
-    
-    mat4 view;
-    
-    u8 is_ortho = 0;
-    union {
-        mat4 perspective;
-        mat4 ortho;
-    };
-};
+#define glm_vec3_muls(v, s, d) glm_vec3_scale_as((v), (s), (d))
+#define glm_vec3_mulf(v, s, d) glm_vec3_muls((v), (s), (d))
+#define glm_vec3_len(v) glm_vec3_norm((v))
 
-static skate_view_t make_view(vec3 pos, vec3 target, r32 fov);
-static void update_view(skate_view_t *view);
-static void view_tick(skate_view_t *view);
-static void add_to_view(skate_view_t *view, vec3 to_add);
-static void look_at_view(skate_view_t *view, vec3 target);
+#define skate_abs(v) (v) < 0.f ? -(v) : (v)
 
 struct skate_buffer_t {
     skate_buffer_t() : ptr(nullptr), size(0), type_size(0) {}

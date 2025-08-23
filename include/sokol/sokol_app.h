@@ -1917,7 +1917,7 @@ _SAPP_LOGITEM_XMACRO(CLIPBOARD_STRING_TOO_BIG, "clipboard string didn't fit into
     SOKOL_APP_API_DECL float sapp_dpi_scale(void);
     /* show or hide the mobile device onscreen keyboard */
     SOKOL_APP_API_DECL void sapp_show_keyboard(bool show);
-    /* return true if the mobile device onscreen keyboard is currently shown */
+    /* return true if the mobile device onscreen keyboard is currently sho`wn */
     SOKOL_APP_API_DECL bool sapp_keyboard_shown(void);
     /* query fullscreen mode */
     SOKOL_APP_API_DECL bool sapp_is_fullscreen(void);
