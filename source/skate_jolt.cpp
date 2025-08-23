@@ -26,7 +26,7 @@ static skate_jolt *get_jolt() {
     return &jolt;
 }
 
-static j_body_interface *get_jolt_body_interface() {
+static j_body_interface *jolt_get_body_interface() {
     skate_jolt *jolt = get_jolt();
     return JPC_PhysicsSystem_GetBodyInterface(jolt->physics_system);
 }
@@ -88,15 +88,106 @@ static j_debug_render_func *jolt_get_debug_render(){
     return &render;
 };
 
-static void skate_jolt_init(skate_jolt *jolt) {
+static bool jolt_push_shape_sphere(vec3 pos, const r32 rad, u32 activation, u8 motion_type, u8 object_layer, j_body_id *out) {
+    j_body_interface *ji = jolt_get_body_interface();
+    
+    JPC_SphereShapeSettings sphere_shape_settings;
+	JPC_SphereShapeSettings_default(&sphere_shape_settings);
+	sphere_shape_settings.Radius = rad;
+    
+    JPC_Shape *sphere_shape = nullptr;
+    JPC_String *err = nullptr;
+	if(!JPC_SphereShapeSettings_Create(&sphere_shape_settings, &sphere_shape, nullptr)) {
+        LOG_PANIC("failed to create sphere physics shape %s", JPC_String_c_str(err));
+        return false;
+    }
+    
+    JPC_BodyCreationSettings sphere_settings;
+	JPC_BodyCreationSettings_default(&sphere_settings);
+	sphere_settings.Position = JPC_RVec3{pos[0], pos[1], pos[2]};
+	sphere_settings.MotionType = (JPC_MotionType)motion_type;
+	sphere_settings.ObjectLayer = object_layer;
+	sphere_settings.Shape = sphere_shape;
+    
+    j_body *body = JPC_BodyInterface_CreateBody(ji, &sphere_settings);
+    *out = JPC_Body_GetID(body);
+	JPC_BodyInterface_AddBody(ji, *out, (JPC_Activation)activation);
+    return true;
+}
+
+static bool jolt_push_shape_plane(vec3 pos, const r32 dist, u32 activation, u8 motion_type, u8 object_layer, j_body_id *out) {
+    LOG_YELL("plane physics shape not implemented");
+    out = 0;
+    return false;
     
 }
 
+static bool jolt_push_shape_box(vec3 pos, vec3 whd, u32 activation, u8 motion_type, u8 object_layer, j_body_id *out) {
+    j_body_interface *ji = jolt_get_body_interface();
+    JPC_BoxShapeSettings floor_shape_settings;
+	JPC_BoxShapeSettings_default(&floor_shape_settings);
+	floor_shape_settings.HalfExtent = JPC_Vec3{whd[0], whd[1], whd[2]};
+	floor_shape_settings.Density = 1;
+    
+	JPC_Shape *floor_shape;
+    JPC_String *err;
+	if (!JPC_BoxShapeSettings_Create(&floor_shape_settings, &floor_shape, &err)) {
+		LOG_PANIC("failed to create box physics shape %s", JPC_String_c_str(err));
+        return false;
+	}
+    
+	JPC_BodyCreationSettings floor_settings;
+	JPC_BodyCreationSettings_default(&floor_settings);
+	floor_settings.Position = JPC_RVec3{pos[0], pos[1], pos[2]};
+	floor_settings.MotionType = (JPC_MotionType)motion_type;
+	floor_settings.ObjectLayer = object_layer;
+	floor_settings.Shape = floor_shape;
+    
+	JPC_Body* floor = JPC_BodyInterface_CreateBody(ji, &floor_settings);
+    *out = JPC_Body_GetID(floor);
+	JPC_BodyInterface_AddBody(ji, *out, (JPC_Activation)activation);
+    return true;
+}
+static j_body_id sid;
+
+static void skate_jolt_init(skate_jolt *jolt) {
+#if 1
+    bool success = false;
+    j_body_id id;
+    if(jolt_push_shape_box(vec3{0,-1,0}, vec3{100, 1, 100}, JOLT_DONT_ACTIVATE, JOLT_STATIC, SkateJoltObjectLayers::Type::NON_MOVING, &id)) {
+        if(jolt_push_shape_sphere(vec3{0.f, 300.f, 0.f}, 0.5f, JOLT_ACTIVATE, JOLT_DYNAMIC, SkateJoltObjectLayers::Type::MOVING, &sid)) {
+            JPC_BodyInterface_SetLinearVelocity(jolt_get_body_interface(), sid, JPC_Vec3{0.0, -15.0, 0.0});
+            
+            success = true;
+        }
+    }
+    
+    LOG_PANIC_COND(success, "FAILED TO PUSH OBJECTS TO JOLT");
+#endif
+}
+
 static void skate_jolt_frame(skate_jolt *jolt) {
+    if(JPC_BodyInterface_IsActive(jolt_get_body_interface(), sid)) {
+        JPC_RVec3 position = JPC_BodyInterface_GetCenterOfMassPosition(jolt_get_body_interface(), sid);
+		JPC_Vec3 velocity = JPC_BodyInterface_GetLinearVelocity(jolt_get_body_interface(), sid);
+        
+		printf("Step %d: Position = (%f, %f, %f), Velocity = (%f, %f, %f)\n", 0, position.x, position.y, position.z, velocity.x, velocity.y, velocity.z);
+    }
+    
+    JPC_PhysicsSystem_Update(jolt->physics_system, JOLT_FPS_MS, JOLT_COLLISION_STEPS, jolt->temp_allocator, (JPC_JobSystem*)jolt->job_system);
     
 }
 
 static void skate_jolt_shutdown(skate_jolt *jolt) {
+    JPC_PhysicsSystem_delete(jolt->physics_system);
+	JPC_BroadPhaseLayerInterface_delete(jolt->broad_phase_layer_interface);
+	JPC_ObjectVsBroadPhaseLayerFilter_delete(jolt->object_vs_broad_phase_layer_filter);
+	JPC_ObjectLayerPairFilter_delete(jolt->object_vs_object_layer_filter);
     
+	JPC_JobSystemThreadPool_delete(jolt->job_system);
+	JPC_TempAllocatorImpl_delete(jolt->temp_allocator);
+    
+	JPC_UnregisterTypes();
+	JPC_FactoryDelete();
 }
 

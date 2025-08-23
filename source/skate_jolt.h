@@ -15,6 +15,7 @@ typedef JPC_PhysicsSystem                               j_physics_system;
 typedef JPC_BodyInterface                               j_body_interface;
 typedef JPC_BodyCreationSettings                        j_body_creation_settings;
 typedef JPC_Body                                        j_body;
+typedef JPC_BodyID                                      j_body_id;
 typedef JPC_Shape                                       j_shape;
 typedef JPC_BroadPhaseLayer                             j_broadphase_layer;
 typedef JPC_BroadPhaseLayerInterfaceFns                 j_broad_phase_layer_interface_func;
@@ -31,6 +32,16 @@ typedef JPC_ObjectLayerPairFilter                       j_obj_vs_obj_layer_pair_
 #define JOLT_NUM_BODY_MUTEX            0
 #define JOLT_MAX_BODY_PAIRS            kilo(1)
 #define JOLT_MAX_CONTACT_CONSTRAINTS   kilo(1)
+
+#define JOLT_TARGET_FPS                60.f
+#define JOLT_FPS_MS                    1.f/JOLT_TARGET_FPS
+#define JOLT_COLLISION_STEPS           1
+
+#define JOLT_DONT_ACTIVATE JPC_ACTIVATION_DONT_ACTIVATE 
+#define JOLT_ACTIVATE      JPC_ACTIVATION_ACTIVATE      
+
+#define JOLT_STATIC        JPC_MOTION_TYPE_STATIC
+#define JOLT_DYNAMIC       JPC_MOTION_TYPE_DYNAMIC
 
 namespace SkateJoltObjectLayers {
 	enum Type {
@@ -57,7 +68,6 @@ struct skate_jolt {
     j_obj_vs_obj_layer_pair_filter *object_vs_object_layer_filter;
     
     bool init;
-    
 };
 
 static skate_jolt *get_jolt();
@@ -65,7 +75,7 @@ static void skate_jolt_init(skate_jolt *jolt);
 static void skate_jolt_frame(skate_jolt *jolt);
 static void skate_jolt_shutdown(skate_jolt *jolt);
 
-static j_body_interface *get_jolt_body_interface();
+static j_body_interface *jolt_get_body_interface();
 static u32 jolt_get_num_of_broadphase_layers(const void *self);
 static j_broadphase_layer jolt_get_broadphase_layer(const void *self, JPC_ObjectLayer in_layer);
 static j_broad_phase_layer_interface_func jolt_get_broad_phase_layer_interface();
@@ -75,6 +85,10 @@ static bool jolt_obj_vs_obj_layer_should_collide(const void *self, JPC_ObjectLay
 static j_object_layer_Pair_filter_func jolt_get_object_layer_pair_filter();
 static void jolt_draw_debug_line(const void *self, JPC_RVec3 inFrom, JPC_RVec3 inTo, JPC_Color inColor);
 static j_debug_render_func *jolt_get_debug_render();
+
+static bool jolt_push_shape_sphere(vec3 pos, const r32 rad, u32 activation, u8 motion_type, u8 object_layer, j_body_id *out);
+static bool jolt_push_shape_plane(vec3 pos, const r32 dist, u32 activation,  u8 motion_type, u8 object_layer, j_body_id *out);
+static bool jolt_push_shape_box(vec3 pos, vec3 whd, u32 activation, u8 motion_type, u8 object_layer, j_body_id *out);
 
 #define SKATE_JOLT_H
 #endif //SKATE_JOLT_H
