@@ -176,7 +176,8 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
         hold_buffer = sokol_skate::mem_alloc(hold_buffer_size);
         hold_buffer_ptr = hold_buffer;
         
-        mesh_import_state = MESH_PATH;
+        // NOTE(kyle): update this if adding to beginning of MESH_STATE_ORDER
+        mesh_import_state = MESH_STATE_ORDER::VERSION;
         
         memcpy(source_dir.ptr, source->ptr, source->len);
         source_dir.len = source->len;
@@ -185,6 +186,28 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
         
         next_state: // each state comes back up here with goto after updating state. could be a loop
         switch(mesh_import_state) {
+            case MESH_STATE_ORDER::VERSION: {
+                char buffer[255] = {0};
+                char *ptr = &buffer[0];
+                hold_buffer_ptr = (u8*)temp;
+                
+                while(*hold_buffer_ptr != '\n') {
+                    if(!char_could_be_floating_point(*hold_buffer_ptr)) {
+                        ++hold_buffer_ptr;
+                        continue;
+                    }
+                    *ptr++ = *hold_buffer_ptr++;
+                }
+                buffer[ptr - buffer] = '\0';
+                
+                r32 version = atof(buffer);
+                s_assert((s32)1000 * version == (s32)1000 * EXPECTED_VERSION);
+                
+                temp = (char*)hold_buffer_ptr;
+                hold_buffer_ptr = hold_buffer;
+                mesh_import_state = MESH_STATE_ORDER::MESH_PATH;
+                goto next_state;
+            } break;;
             case MESH_STATE_ORDER::MESH_PATH: {
                 for(;;) {
                     *hold_buffer_ptr++ = *temp++;
@@ -373,8 +396,10 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                     if(++order_count == BLEND_SHAPE_ORDER::COUNT) {break;}
                 }
                 LOG_PANIC_COND(order_count == (int)BLEND_SHAPE_ORDER::COUNT, "invalid blend shape image data in model import %s", source->ptr);
-                // IF MESH_STATE_ORDER IS EXPANDED THERE NEEDS TO BE A STATE SET AND GOTO "next_state" ADDED HERE.
             } break;
+            
+            
+            // IF MESH_STATE_ORDER IS EXPANDED THERE NEEDS TO BE A STATE SET AND GOTO "next_state" ADDED HERE.
         }
         
         import_result.parts = (skate_model_import_part_t*)sokol_skate::mem_alloc(sizeof(skate_model_import_part_t) * import_result.num_parts);
@@ -421,6 +446,36 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
             while(*last_mesh_found_point++ != ',') {}
             if(++part_ele_idx == MESH_PART_ORDER::COUNT) {break;}
         }
+        
+        char *lmffpp_saved = last_mesh_found_point;
+        
+        // AABB_MIN
+        temp = (char*)++last_mesh_found_point;
+        last_mesh_found_point = find_matching_in_buffer(temp, last_mesh_found_size, PART_AABB_MIN_ID);
+        LOG_PANIC_COND(last_mesh_found_point, "unable to find part identifier %s in model file %s", PART_AABB_MIN_ID, source->ptr);
+        
+        vec3 rr;
+        for(int i = 0; i < sizeof(vec3) / sizeof(r32); ++i) {
+            while(*last_mesh_found_point == ',' || *last_mesh_found_point == ':') {++last_mesh_found_point;}
+            rr[i] = atof(last_mesh_found_point);
+            while(*last_mesh_found_point != ',') {++last_mesh_found_point;}
+        }
+        glm_vec3_copy(rr, part->aabb_min);
+        
+        // AABB_MAX
+        temp = (char*)lmffpp_saved + 1;
+        last_mesh_found_point = find_matching_in_buffer(temp, last_mesh_found_size, PART_AABB_MAX_ID);
+        LOG_PANIC_COND(last_mesh_found_point, "unable to find part identifier %s in model file %s", PART_AABB_MAX_ID, source->ptr);
+        
+        glm_vec3_zero(rr);
+        for(int i = 0; i < sizeof(vec3) / sizeof(r32); ++i) {
+            while(*last_mesh_found_point == ',' || *last_mesh_found_point == ':') {++last_mesh_found_point;}
+            rr[i] = atof(last_mesh_found_point);
+            while(*last_mesh_found_point != ',') {++last_mesh_found_point;}
+        }
+        glm_vec3_copy(rr, part->aabb_max);
+        
+        last_mesh_found_point = lmffpp_saved;
         
         // we have our mesh part static data, now to pull the pointer data from the file
         temp = (char*)++last_mesh_found_point;

@@ -137,13 +137,12 @@ struct skate_render_bindings_t {
 
 struct skate_render_mesh_t {
     skate_render_bindings_t bind;
-    vec3 position = {0.f, 0.f, 0.f};
-    vec3 rotation = {0.f, 0.f, 0.f};
+    vec3 pos = {0.f, 0.f, 0.f};
+    vec3 rot = {0.f, 0.f, 0.f};
     vec3 scale = {1.f, 1.f, 1.f};
     
-    mat4 model;
     u8 ignore_shadow;
-    skate_render_mesh_t *next;
+    void *outer;
 };
 
 //static skate_render_mesh_t render_mesh_from_import(const skate_model_import_result_t *result);
@@ -185,7 +184,7 @@ namespace RENDER_PASS {
 };
 
 class skate_model_import_t;
-static skate_render_mesh_t *init_render_mesh(const skate_model_import_t *import, const int RENDER_PASS);
+static skate_render_mesh_t *init_render_mesh(const skate_model_import_t *import, const int RENDER_PASS, void *outer = nullptr);
 static void bind_image_data_to_render_mesh(skate_render_mesh_t *mesh, u8 *image_ptr, u32 image_width, u32 image_height, s32 image_idx, s32 sampler_idx, s8 binding_idx = -1);
 static void bind_image_to_mesh(skate_render_mesh_t *mesh, const skate_image_file_t *file);
 
@@ -266,12 +265,12 @@ struct skate_sokol_t {
     input_mouse_pos_data_t global_mouse_pos_data;
 };
 
+
 static skate_sokol_t *get_sokol();
 
 static void sokol_init();
 static void sokol_frame();
 static void sokol_cleanup();
 static void sokol_event(const sapp_event *event);
-
 #define SKATE_SOKOL_H
 #endif //SKATE_SOKOL_H

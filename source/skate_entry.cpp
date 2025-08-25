@@ -13,6 +13,8 @@
 #include "skate_zlib.h"
 #include "skate_model_import.h"
 #include "skate_jolt.h"
+#include "skate_render_object.h"
+#include "skate_world.h"
 
 sapp_desc sokol_main(int argc, char* argv[]) {
     logger_init();
@@ -54,3 +56,5 @@ sapp_desc sokol_main(int argc, char* argv[]) {
 #include "skate_zlib.cpp"
 #include "skate_log.cpp"
 #include "skate_jolt.cpp"
+#include "skate_render_object.cpp"
+#include "skate_world.cpp"

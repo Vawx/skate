@@ -148,31 +148,56 @@ static bool jolt_push_shape_box(vec3 pos, vec3 whd, u32 activation, u8 motion_ty
 	JPC_BodyInterface_AddBody(ji, *out, (JPC_Activation)activation);
     return true;
 }
-static j_body_id sid;
+
+static void jolt_get_model_transform(j_body_id *id, mat4 out) {
+    j_body_interface *ji = jolt_get_body_interface();
+    JPC_RMat44 mt = JPC_BodyInterface_GetWorldTransform(ji, *id);
+    
+    out[0][0] = mt.col[0].x;
+    out[0][1] = mt.col[0].y;
+    out[0][2] = mt.col[0].z;
+    out[0][3] = mt.col[0].w;
+    
+    out[1][0] = mt.col[1].x;
+    out[1][1] = mt.col[1].y;
+    out[1][2] = mt.col[1].z;
+    out[1][3] = mt.col[1].w;
+    
+    out[2][0] = mt.col[2].x;
+    out[2][1] = mt.col[2].y;
+    out[2][2] = mt.col[2].z;
+    out[2][3] = mt.col[2].w;
+    
+    out[3][0] = mt.col3.x;
+    out[3][1] = mt.col3.y;
+    out[3][2] = mt.col3.z;
+    out[3][3] = mt.col3._w;
+}
+
+#if 0 // example shapes
+bool success = false;
+j_body_id id;
+if(jolt_push_shape_box(vec3{0,-1,0}, vec3{100, 1, 100}, JOLT_DONT_ACTIVATE, JOLT_STATIC, SkateJoltObjectLayers::Type::NON_MOVING, &id)) {
+    if(jolt_push_shape_sphere(vec3{0.f, 300.f, 0.f}, 0.5f, JOLT_ACTIVATE, JOLT_DYNAMIC, SkateJoltObjectLayers::Type::MOVING, &sid)) {
+        JPC_BodyInterface_SetLinearVelocity(jolt_get_body_interface(), sid, JPC_Vec3{0.0, -15.0, 0.0});
+        success = true;
+    }
+}
+
+LOG_PANIC_COND(success, "FAILED TO PUSH OBJECTS TO JOLT");
+#endif
 
 static void skate_jolt_init(skate_jolt *jolt) {
-#if 1
-    bool success = false;
     j_body_id id;
-    if(jolt_push_shape_box(vec3{0,-1,0}, vec3{100, 1, 100}, JOLT_DONT_ACTIVATE, JOLT_STATIC, SkateJoltObjectLayers::Type::NON_MOVING, &id)) {
-        if(jolt_push_shape_sphere(vec3{0.f, 300.f, 0.f}, 0.5f, JOLT_ACTIVATE, JOLT_DYNAMIC, SkateJoltObjectLayers::Type::MOVING, &sid)) {
-            JPC_BodyInterface_SetLinearVelocity(jolt_get_body_interface(), sid, JPC_Vec3{0.0, -15.0, 0.0});
-            
-            success = true;
-        }
+    if(jolt_push_shape_box(vec3{0,-30,0}, vec3{100, 1, 100}, JOLT_DONT_ACTIVATE, JOLT_STATIC, SkateJoltObjectLayers::Type::NON_MOVING, &id)) {
+        mat4 t;
+        jolt_get_model_transform(&id, t);
+        
+        printf("");
     }
-    
-    LOG_PANIC_COND(success, "FAILED TO PUSH OBJECTS TO JOLT");
-#endif
 }
 
 static void skate_jolt_frame(skate_jolt *jolt) {
-    if(JPC_BodyInterface_IsActive(jolt_get_body_interface(), sid)) {
-        JPC_RVec3 position = JPC_BodyInterface_GetCenterOfMassPosition(jolt_get_body_interface(), sid);
-		JPC_Vec3 velocity = JPC_BodyInterface_GetLinearVelocity(jolt_get_body_interface(), sid);
-        
-		printf("Step %d: Position = (%f, %f, %f), Velocity = (%f, %f, %f)\n", 0, position.x, position.y, position.z, velocity.x, velocity.y, velocity.z);
-    }
     
     JPC_PhysicsSystem_Update(jolt->physics_system, JOLT_FPS_MS, JOLT_COLLISION_STEPS, jolt->temp_allocator, (JPC_JobSystem*)jolt->job_system);
     

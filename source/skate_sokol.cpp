@@ -51,7 +51,16 @@ bool is_key_released(sapp_keycode code) {
     return false;
 }
 
-static skate_render_mesh_t *init_render_mesh(const skate_model_import_t *import, const int RENDER_PASS) {
+static skate_entity_t *get_entity_from_render_mesh(skate_render_mesh_t *mesh) {
+    skate_render_obj_t *render_obj = (skate_render_obj_t*)mesh->outer;
+    s_assert(render_obj != nullptr);
+    
+    skate_entity_t *ent = (skate_entity_t*)render_obj->outer;
+    s_assert(ent != nullptr);
+    return ent;
+}
+
+static skate_render_mesh_t *init_render_mesh(const skate_model_import_t *import, const int RENDER_PASS, void *outer) {
     skate_sokol_t *sokol = get_sokol();
     
     skate_render_mesh_t mm = {};
@@ -71,6 +80,7 @@ static skate_render_mesh_t *init_render_mesh(const skate_model_import_t *import,
         mm.bind.bindings_count = import->import_result.num_parts;
     }
     u32 idx = sokol->render_pass[RENDER_PASS].mesh_buffer.count();
+    mm.outer = outer; // probably render_object
     push_buffer(&sokol->render_pass[RENDER_PASS].mesh_buffer, (u8*)&mm, sizeof(skate_render_mesh_t));
     return (skate_render_mesh_t*)&sokol->render_pass[RENDER_PASS].mesh_buffer.ptr[idx * sokol->render_pass[RENDER_PASS].mesh_buffer.type_size];
 }
@@ -171,15 +181,15 @@ static void init_default_level() {
     
     {
         skate_directory_t dir = get_directory_for("plane.model", SKATE_DIRECTORY_MESH);
-        skate_import_t *im = skate_import_t::get();
-        skate_model_import_t *model_import = im->get_or_load_model(&dir);
         
         for(int i = 0; i < 4; ++i) {
-            skate_render_mesh_t *mesh = init_render_mesh(model_import, RENDER_PASS::TYPE_STATIC);
-            if(i % 2 == 0) {
-                mesh->position[2] = 28 * -i;
+            skate_render_obj_t *obj = get_render_obj(&dir);
+            skate_entity_t *ent = get_entity_rendered(obj);
+            skate_render_mesh_t *mesh = obj->mesh;
+            if(i+1 % 2 == 0) {
+                set_entity_rendered_pos_z(ent, 30 * i);
             } else {
-                mesh->position[0] = 28 * -i;
+                set_entity_rendered_pos_x(ent, 30 * -i);
             }
             mesh->ignore_shadow = true;
             bind_image_to_mesh(mesh, &tf);
@@ -202,17 +212,21 @@ static void init_default_level() {
             r32 nz = rand() % 100;
             
             skate_directory_t dir = get_directory_for("cube.model", SKATE_DIRECTORY_MESH);
-            skate_import_t *im = skate_import_t::get();
-            skate_model_import_t *model_import = im->get_or_load_model(&dir);
+            skate_render_obj_t *obj = get_render_obj(&dir);
+            skate_entity_t *ent = get_entity_rendered(obj);
             
-            skate_render_mesh_t *mesh = init_render_mesh(model_import, RENDER_PASS::TYPE_STATIC);
-            mesh->position[0] = def_loc[0] + nx > 49 ? x : -x;
-            mesh->position[1] = def_loc[1] + y;
-            mesh->position[2] = def_loc[2] + nz > 49 ? z : -z;;
-            mesh->rotation[0] = -nx;
-            mesh->rotation[1] = y;
-            mesh->rotation[2] = -nz;
-            bind_image_to_mesh(mesh, &tf);
+            r32 xp = def_loc[0] + nx > 49 ? x : -x;
+            r32 yp = def_loc[1] + y;
+            r32 zp = def_loc[2] + nz > 49 ? z : -z;;
+            set_entity_rendered_pos(ent, vec3{xp, yp, zp});
+            
+            r32 xr = -nx;
+            r32 yr = y;
+            r32 zr = -nz;
+            set_entity_rendered_rot(ent, vec3{xr, yr, zr});
+            set_entity_rendered_scale(ent, vec3{1, 1, 1});
+            
+            bind_image_to_mesh(obj->mesh, &tf);
         }
     }
 }
@@ -510,7 +524,14 @@ static void render_mesh_for(int PASS, int binding_idx, int slice_id, skate_rende
         } break;
         case RENDER_PASS::TYPE_SHADOW: {
             vs_shadow_params_t shadow_params = {};
-            glm_mat4_mul(sokol->light_view_projections[slice_id], mesh->model, shadow_params.light_view_mvp);
+            
+            mat4 model;
+            glm_mat4_identity(model);
+            
+            skate_entity_t *ent = get_entity_from_render_mesh(mesh);
+            get_entity_model(ent, model);
+            
+            glm_mat4_mul(sokol->light_view_projections[slice_id], model, shadow_params.light_view_mvp);
             sg_apply_uniforms(UB_vs_shadow_params, &SG_RANGE(shadow_params));
             
             sg_apply_bindings(mesh->bind.bindings[binding_idx].sgb);
@@ -524,38 +545,6 @@ static bool apply_uniforms_for(const int PASS, int idx, int i, skate_render_mesh
     
     bool result = false;
     
-    glm_mat4_identity(mesh->model);
-    {
-        mat4 xm;
-        mat4 ym;
-        mat4 zm;
-        mat4 store;
-        mat4 store2;
-        glm_mat4_identity(xm);
-        glm_mat4_identity(ym);
-        glm_mat4_identity(zm);
-        glm_mat4_identity(store);
-        glm_mat4_identity(store2);
-        
-        glm_rotated_x(xm, mesh->rotation[0], xm);
-        glm_rotated_y(ym, mesh->rotation[1], ym);
-        glm_rotated_z(zm, mesh->rotation[2], zm);
-        glm_mat4_mul(xm, ym, store);
-        glm_mat4_mul(store, zm, store2);
-        
-        mat4 tm;
-        glm_mat4_identity(tm);
-        glm_translate_to(tm, mesh->position, tm);
-        
-        mat4 sm;
-        glm_mat4_identity(sm);
-        glm_scale_to(sm, mesh->scale, sm);
-        
-        glm_mat4_identity(store);
-        glm_mat4_mul(tm, store2, store);
-        glm_mat4_mul(store, sm, mesh->model);
-    }
-    
     mat4 view_projection;
     glm_mat4_identity(view_projection);
     {
@@ -566,9 +555,11 @@ static bool apply_uniforms_for(const int PASS, int idx, int i, skate_render_mesh
     switch(PASS) {
         case RENDER_PASS::TYPE_STATIC: {
             texture_static_mesh_vs_params_t params = {};
-            glm_mat4_mul(view_projection, mesh->model, params.mvp);
             
-            glm_mat4_copy(mesh->model, params.model);
+            skate_entity_t *ent = get_entity_from_render_mesh(mesh);
+            get_entity_model(ent, params.model);
+            
+            glm_mat4_mul(view_projection, params.model, params.mvp);
             sg_apply_uniforms(UB_texture_static_mesh_vs_params, &SG_RANGE(params));
             
             // fs

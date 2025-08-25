@@ -59,6 +59,43 @@ namespace SkateJoltBroadPhaseLayers {
     };
 };
 
+namespace SkateJoltShapeType {
+    enum Type {
+        NONE,
+        SPHERE,
+        BOX,
+        PLANE,
+        MESH,
+        
+        COUNT
+    };
+};
+
+struct jolt_obj_t {
+    mat4 transform;
+    vec3 origin;
+    
+    j_body_id id;
+    
+    u32 activation;
+    u8 motion;
+    u8 object_layer;
+    r32 density;
+    
+    SkateJoltShapeType::Type type;
+    union {
+        struct {
+            r32 rad;
+        };
+        struct {
+            vec3 whd;
+        };
+        struct {
+            r32 dist;
+        };
+    };
+};
+
 struct skate_jolt {
     j_physics_system *physics_system;
     j_temp_allocator *temp_allocator;
@@ -89,6 +126,7 @@ static j_debug_render_func *jolt_get_debug_render();
 static bool jolt_push_shape_sphere(vec3 pos, const r32 rad, u32 activation, u8 motion_type, u8 object_layer, j_body_id *out);
 static bool jolt_push_shape_plane(vec3 pos, const r32 dist, u32 activation,  u8 motion_type, u8 object_layer, j_body_id *out);
 static bool jolt_push_shape_box(vec3 pos, vec3 whd, u32 activation, u8 motion_type, u8 object_layer, j_body_id *out);
+static void jolt_get_model_transform(j_body_id *id, mat4 out);
 
 #define SKATE_JOLT_H
 #endif //SKATE_JOLT_H

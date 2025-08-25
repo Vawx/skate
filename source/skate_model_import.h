@@ -1,7 +1,11 @@
 /* date = July 30th 2025 8:14 pm */
 #ifndef SKATE_FBX_IMPORT_H
 
+static const r32 EXPECTED_VERSION = 0.001f;
+
 #define PART_ID                         "{mesh_part}"
+#define PART_AABB_MIN_ID                "{aabb_min}"
+#define PART_AABB_MAX_ID                "{aabb_max}"
 #define PART_INDICES_PTR_ID             "{indices_ptr}:"
 #define PART_VERTICES_PTR_ID            "{vertice_ptr}:"
 #define PART_SKINNED_VERTEX_PTR_ID      "{skin_vertex_ptr}:"
@@ -16,6 +20,7 @@
 
 // EXPECTED MESH STATE ORDER, for parsing
 enum MESH_STATE_ORDER {
+    VERSION,
     MESH_PATH,
     NUM_PARTS,
     NUM_INSTANCES,
@@ -26,7 +31,7 @@ enum MESH_STATE_ORDER {
     BONE_INDICES,
     BONE_MATRICES,
     BLEND_SHAPES,
-    BLEND_SHAPE_IMAGE
+    BLEND_SHAPE_IMAGE,
 };
 
 // EXPECTED MESH PART STATE ORDER (THIS CAN CYCLE DEPENDING ON NUMBER OF MESH PARTS)
@@ -75,6 +80,9 @@ struct skate_model_import_part_t {
     u32 indices_count;
     u8 *skin_ptr;
     u32 skin_size;
+    
+    vec3 aabb_min;
+    vec3 aabb_max;
 };
 
 struct skate_model_import_result_t {
