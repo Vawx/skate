@@ -127,6 +127,6 @@ static bool jolt_push_shape_sphere(vec3 pos, const r32 rad, u32 activation, u8 m
 static bool jolt_push_shape_plane(vec3 pos, const r32 dist, u32 activation,  u8 motion_type, u8 object_layer, j_body_id *out);
 static bool jolt_push_shape_box(vec3 pos, vec3 whd, u32 activation, u8 motion_type, u8 object_layer, j_body_id *out);
 static void jolt_get_model_transform(j_body_id *id, mat4 out);
-
+static void jolt_get_body_com_position(j_body_id *id, vec3 out);
 #define SKATE_JOLT_H
 #endif //SKATE_JOLT_H

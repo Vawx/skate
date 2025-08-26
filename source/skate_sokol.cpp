@@ -78,6 +78,8 @@ static skate_render_mesh_t *init_render_mesh(const skate_model_import_t *import,
         mm.bind.bindings[i].sgb.index_buffer = sg_make_buffer(&index_buffer);
         mm.bind.bindings[i].indice_count = import->import_result.parts[i].indices_count;
         mm.bind.bindings_count = import->import_result.num_parts;
+        glm_vec3_copy(import->import_result.parts[i].aabb_min, mm.bind.bindings[i].aabb_min);
+        glm_vec3_copy(import->import_result.parts[i].aabb_max, mm.bind.bindings[i].aabb_max);
     }
     u32 idx = sokol->render_pass[RENDER_PASS].mesh_buffer.count();
     mm.outer = outer; // probably render_object
@@ -181,19 +183,18 @@ static void init_default_level() {
     
     {
         skate_directory_t dir = get_directory_for("plane.model", SKATE_DIRECTORY_MESH);
+        skate_render_obj_t *obj = get_render_obj(&dir);
+        skate_entity_t *ent = get_entity_rendered(obj);
+        skate_render_mesh_t *mesh = obj->mesh;
+        mesh->ignore_shadow = true;
+        bind_image_to_mesh(mesh, &tf);
         
-        for(int i = 0; i < 4; ++i) {
-            skate_render_obj_t *obj = get_render_obj(&dir);
-            skate_entity_t *ent = get_entity_rendered(obj);
-            skate_render_mesh_t *mesh = obj->mesh;
-            if(i+1 % 2 == 0) {
-                set_entity_rendered_pos_z(ent, 30 * i);
-            } else {
-                set_entity_rendered_pos_x(ent, 30 * -i);
-            }
-            mesh->ignore_shadow = true;
-            bind_image_to_mesh(mesh, &tf);
-        }
+        vec3 min;
+        vec3 max;
+        glm_vec3_divs(ent->obj->mesh->bind.bindings[0].aabb_min, 2.f, min);
+        glm_vec3_divs(ent->obj->mesh->bind.bindings[0].aabb_max, 2.f, max);
+        
+        obj->physics_enabled = jolt_push_shape_box(vec3{0, 0, 0}, vec3{max[0] - min[0], 1, max[2] - min[2]}, JOLT_DONT_ACTIVATE, JOLT_STATIC, SkateJoltObjectLayers::Type::NON_MOVING, &obj->jolt_obj.id);
     }
     
     {
@@ -228,6 +229,11 @@ static void init_default_level() {
             
             bind_image_to_mesh(obj->mesh, &tf);
         }
+    }
+    
+    {
+        
+        
     }
 }
 
@@ -702,6 +708,29 @@ static void get_light_view_projection_matrix(mat4 out, const r32 np, const r32 f
 
 static void render_loop() {
     skate_sokol_t *sokol = get_sokol();
+    
+    if(is_key_pressed(SAPP_KEYCODE_F1)) {
+        skate_directory_t dir = get_directory_for("cube.model", SKATE_DIRECTORY_MESH);
+        skate_render_obj_t *obj = get_render_obj(&dir);
+        s_assert(obj->mesh->bind.bindings_count == 1); // bindings are "packed" into the render object, only accept one
+        
+        skate_entity_t *ent = get_entity_rendered(obj);
+        
+        set_entity_rendered_pos(ent, vec3{0, 20, 0});
+        set_entity_rendered_rot(ent, vec3{0,0,0});
+        set_entity_rendered_scale(ent, vec3{1, 1, 1});
+        
+        vec3 min;
+        vec3 max;
+        glm_vec3_divs(ent->obj->mesh->bind.bindings[0].aabb_min, 2.f, min);
+        glm_vec3_divs(ent->obj->mesh->bind.bindings[0].aabb_max, 2.f, max);
+        
+        obj->physics_enabled = jolt_push_shape_box(vec3{0, 20, 0}, vec3{max[0] - min[0], max[1] - min[1], max[2] - min[2]}, JOLT_ACTIVATE, JOLT_DYNAMIC, SkateJoltObjectLayers::Type::MOVING, &obj->jolt_obj.id);
+        
+        skate_directory_t tfdir = skate_directory_t("grid_64_64.png", SKATE_DIRECTORY_TEXTURE);
+        skate_image_file_t tf = skate_image_file_t(&tfdir);
+        bind_image_to_mesh(obj->mesh, &tf);
+    }
     
     // shadow cascades
     for(int i = 0; i < CASCADE_LEVEL_COUNT + 1; ++i) {

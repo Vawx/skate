@@ -65,3 +65,12 @@ static void set_render_obj_scale(skate_render_obj_t *obj, vec3 in) {
     LOG_PANIC_COND(obj && obj->id >= 0, "INVALID render object trying to set scale");
     glm_vec3_copy(in, obj->mesh->scale);
 }
+
+static void get_render_obj_pos(skate_render_obj_t *obj, vec3 out) {
+    LOG_PANIC_COND(obj && obj->id >= 0, "INVALID render object trying to get pos");
+    if(obj->physics_enabled) {
+        jolt_get_body_com_position(&obj->jolt_obj.id, out);
+    } else {
+        glm_vec3_copy(obj->mesh->pos, out);
+    }
+}

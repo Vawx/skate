@@ -37,6 +37,7 @@ static void set_entity_rendered_pos_x(skate_entity_t *ent, r32 x);
 static void set_entity_rendered_pos_y(skate_entity_t *ent, r32 y);
 static void set_entity_rendered_pos_z(skate_entity_t *ent, r32 z);
 static void set_entity_rendered_pos(skate_entity_t *ent, vec3 pos);
+static void get_entity_rendered_pos(skate_entity_t *ent, vec3 out_pos);
 static void set_entity_rendered_rot(skate_entity_t *ent, vec3 rot);
 static void set_entity_rendered_scale(skate_entity_t *ent, vec3 scale);
 static void get_entity_model(skate_entity_t *ent, mat4 out);

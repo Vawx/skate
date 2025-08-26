@@ -79,6 +79,11 @@ static void set_entity_rendered_pos(skate_entity_t *ent, vec3 pos){
     set_render_obj_pos(ent->obj, pos);
 }
 
+static void get_entity_rendered_pos(skate_entity_t *ent, vec3 out_pos) {
+    LOG_YELL_COND(ent && ent && ent->id >= 0, "trying to set invalid entity to a new rendered position"); 
+    
+}
+
 static void set_entity_rendered_rot(skate_entity_t *ent, vec3 rot) {
     LOG_YELL_COND(ent && ent->id >= 0, "trying to set invalid entity to a new rendered rotation"); 
     set_render_obj_rot(ent->obj, rot);

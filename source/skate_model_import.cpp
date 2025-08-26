@@ -201,6 +201,8 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                 buffer[ptr - buffer] = '\0';
                 
                 r32 version = atof(buffer);
+                
+                // invalid version. old export? or bad file
                 s_assert((s32)1000 * version == (s32)1000 * EXPECTED_VERSION);
                 
                 temp = (char*)hold_buffer_ptr;
@@ -447,6 +449,8 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
             if(++part_ele_idx == MESH_PART_ORDER::COUNT) {break;}
         }
         
+        // because aabb got sort of jammed in here after the fact.
+        // save this off so we can continue with indicies with where "we were" before aabb
         char *lmffpp_saved = last_mesh_found_point;
         
         // AABB_MIN

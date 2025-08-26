@@ -128,6 +128,9 @@ struct input_t {
 struct skate_render_binding_t {
     sg_bindings sgb;
     u32 indice_count;
+    
+    vec3 aabb_min;
+    vec3 aabb_max;
 };
 
 struct skate_render_bindings_t {

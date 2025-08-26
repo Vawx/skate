@@ -174,6 +174,14 @@ static void jolt_get_model_transform(j_body_id *id, mat4 out) {
     out[3][3] = mt.col3._w;
 }
 
+static void jolt_get_body_com_position(j_body_id *id, vec3 out) {
+    j_body_interface *ji = jolt_get_body_interface();
+    JPC_RVec3 pos = JPC_BodyInterface_GetCenterOfMassPosition(ji, *id);
+    out[0] = pos.x;
+    out[1] = pos.y;
+    out[2] = pos.z;
+}
+
 #if 0 // example shapes
 bool success = false;
 j_body_id id;

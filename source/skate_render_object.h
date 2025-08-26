@@ -33,7 +33,7 @@ static void set_render_obj_pos_z(skate_render_obj_t *obj, r32 z);
 static void set_render_obj_pos(skate_render_obj_t *obj, vec3 in);
 static void set_render_obj_rot(skate_render_obj_t *obj, vec3 in);
 static void set_render_obj_scale(skate_render_obj_t *obj, vec3 in);
-
+static void get_render_obj_pos(skate_render_obj_t *obj, vec3 out);
 
 #define SKATE_RENDER_OBJECT_H
 #endif //SKATE_RENDER_OBJECT_H
