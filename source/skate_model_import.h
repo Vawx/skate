@@ -1,7 +1,7 @@
 /* date = July 30th 2025 8:14 pm */
 #ifndef SKATE_FBX_IMPORT_H
 
-static const r32 EXPECTED_VERSION = 0.001f;
+static const r32 EXPECTED_VERSION = 0.002f;
 
 #define PART_ID                         "{mesh_part}"
 #define PART_AABB_MIN_ID                "{aabb_min}"
@@ -15,6 +15,7 @@ static const r32 EXPECTED_VERSION = 0.001f;
 #define BONE_MATRICES_PTR_ID            "{bone_matrices_ptr}:"
 #define BLEND_SHAPES_PTR_ID             "{blend_shapes_ptr}:"
 #define BLEND_SHAPE_IMAGE_PTR_ID        "{blend_shape_image_ptr}:"
+#define NODES_PTR_ID                    "{nodes_ptr}"
 
 #define EXPECTED_VERTEX_SIZE 36
 
@@ -22,6 +23,7 @@ static const r32 EXPECTED_VERSION = 0.001f;
 enum MESH_STATE_ORDER {
     VERSION,
     MESH_PATH,
+    NUM_NODES,
     NUM_PARTS,
     NUM_INSTANCES,
     SKINNED,
@@ -32,6 +34,7 @@ enum MESH_STATE_ORDER {
     BONE_MATRICES,
     BLEND_SHAPES,
     BLEND_SHAPE_IMAGE,
+    NODES,
 };
 
 // EXPECTED MESH PART STATE ORDER (THIS CAN CYCLE DEPENDING ON NUMBER OF MESH PARTS)
@@ -97,7 +100,10 @@ struct skate_model_import_result_t {
     u32 bone_matrices_size;
     u8 *blend_shapes_ptr;
     u32 blend_shapes_size;
+    u8 *nodes_ptr;
+    u32 nodes_ptr_size;
     
+    u32 num_nodes;
     u32 num_bones;
     u32 num_blend_shapes;
     u32 num_instances;

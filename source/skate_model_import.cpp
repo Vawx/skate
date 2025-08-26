@@ -227,10 +227,17 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                         import_result.name_len = hold_buffer_ptr - hold_buffer;
                         memcpy(import_result.name, hold_buffer, hold_buffer_ptr - hold_buffer);
                         import_result.name[import_result.name_len] = 0;
-                        mesh_import_state = MESH_STATE_ORDER::NUM_PARTS;
+                        mesh_import_state = MESH_STATE_ORDER::NUM_NODES;
                         break;
                     }
                 }
+                goto next_state;
+            } break;
+            case MESH_STATE_ORDER::NUM_NODES: {
+                hold_buffer_ptr = hold_buffer;
+                temp = forward_to_next_comma(temp, 0, false);
+                import_result.num_nodes = get_int_value_from_following_str(temp);
+                mesh_import_state = MESH_STATE_ORDER::NUM_PARTS;
                 goto next_state;
             } break;
             case MESH_STATE_ORDER::NUM_PARTS: {
@@ -398,18 +405,28 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                     if(++order_count == BLEND_SHAPE_ORDER::COUNT) {break;}
                 }
                 LOG_PANIC_COND(order_count == (int)BLEND_SHAPE_ORDER::COUNT, "invalid blend shape image data in model import %s", source->ptr);
+                mesh_import_state = MESH_STATE_ORDER::NODES;
+                goto next_state;
             } break;
-            
-            
+            case MESH_STATE_ORDER::NODES: {
+                hold_buffer_ptr = hold_buffer;
+                char *blend_shape_image_ptr = (char*)uncompressed_data;
+                char *found = find_matching_in_buffer(blend_shape_image_ptr, uncompressed_size, (char*)NODES_PTR_ID);
+                LOG_YELL_COND(found, "unable to find %s in model file %s", NODES_PTR_ID, source->ptr);
+                
+                
+                
+            } break;
             // IF MESH_STATE_ORDER IS EXPANDED THERE NEEDS TO BE A STATE SET AND GOTO "next_state" ADDED HERE.
         }
         
+        // that was the mesh header, now for each mesh piece
         import_result.parts = (skate_model_import_part_t*)sokol_skate::mem_alloc(sizeof(skate_model_import_part_t) * import_result.num_parts);
         u32 mesh_part_idx = 0;
         char *last_mesh_found_point = nullptr;
         u32 last_mesh_found_size = uncompressed_size;
         
-        // that was the mesh header, now for each mesh piece
+        // goto is used probably break this out into its own function eventually...
         make_mesh:
         
         temp = last_mesh_found_point != nullptr ? last_mesh_found_point :(char*)uncompressed_data;
