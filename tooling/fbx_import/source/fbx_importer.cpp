@@ -53,8 +53,7 @@ void* alloc_imp(s32 type_size, s32 count) {
     if(!count * type_size) { return nullptr; }
 	void* ptr = VirtualAlloc(0, type_size * count, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!ptr) {
-		fprintf(stderr, "Out of memory\n");
-		__debugbreak();
+		__debugbreak(); // out of memory
 	}
 	memset(ptr, 0, type_size * count);
 	return ptr;
@@ -64,8 +63,7 @@ void* alloc_dup_imp(s32 type_size, s32 count, const void* data) {
     if(!count * type_size) { return nullptr; }
 	void* ptr = VirtualAlloc(0, type_size * count, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	if (!ptr) {
-		fprintf(stderr, "Out of memory\n");
-		__debugbreak();
+		__debugbreak(); // out of memory
 	}
 	memcpy(ptr, data, type_size * count);
 	return ptr;
@@ -79,8 +77,7 @@ void* alloc_imp(s32 type_size, s32 count)
 {
 	void* ptr = malloc(type_size * count);
 	if (!ptr) {
-		fprintf(stderr, "Out of memory\n");
-		__debugbreak();
+		__debugbreak(); // out of memory
 	}
 	memset(ptr, 0, type_size * count);
 	return ptr;
@@ -89,9 +86,9 @@ void* alloc_imp(s32 type_size, s32 count)
 void* alloc_dup_imp(s32 type_size, s32 count, const void* data)
 {
 	void* ptr = malloc(type_size * count);
-	if (!ptr) {
-		fprintf(stderr, "Out of memory\n");
-		__debugbreak();
+    if (!ptr) {
+		__debugbreak(); // out of memory
+        
 	}
 	memcpy(ptr, data, type_size * count);
 	return ptr;
@@ -531,8 +528,8 @@ void fbx_importer::read_mesh(viewer_mesh* vmesh, ufbx_mesh* mesh, const char* in
 		ufbx_error error;
         size_t num_vertices = ufbx_generate_indices(streams, num_streams, indices, num_indices, NULL, &error);
 		if (error.type != UFBX_ERROR_NONE) {
-			print_error(&error, "Failed to generate index buffer");
-			__debugbreak();
+			importer_success_code = FBX_IMPORTER_CODE::FAILED_CANT_GENERATE_INDEX_BUFFER;
+            return;
 		}
         
         part->num_indices = num_indices;
@@ -854,8 +851,8 @@ void fbx_importer::load_scene() {
 	ufbx_error error;
 	ufbx_scene* scene = ufbx_load_file(source.ptr, &opts, &error);
 	if (!scene) {
-		print_error(&error, "Failed to load scene");
-		__debugbreak();
+		importer_success_code = FBX_IMPORTER_CODE::FAILED_INVALID_FILE_PATH;
+        return;
 	}
     
 	read_scene(scene, source.ptr);
@@ -890,26 +887,27 @@ void fbx_importer::load_scene() {
 }
 
 void fbx_importer::serialize() {
-    
     // version file and validation
     char buffer[1024] = {0};
     FILE *version_file = fopen(version.ptr, "r+");
-    if(!version_file) __debugbreak(); // cant find version file: bad
-    
-    if(version_file) {
-        char *ptr = &buffer[0];
-        fread(ptr, sizeof(char), 1024, version_file);
-        
-        char version_buffer[255];
-        memset(version_buffer, 0, 255);
-        char *pp = &version_buffer[0];
-        pp += sprintf(pp, "version: %s\n", buffer);
-        
-        fbx_string version_string = fbx_string((char*)&version_buffer[0], (pp - version_buffer) - 1);
-        arrpush(strings, version_string);
-        
-        fclose(version_file);
+    if(!version_file) {
+        // cant find version file: bad
+        importer_success_code = FBX_IMPORTER_CODE::FAILED_INVALID_VERSION; 
+        return;
     }
+    
+    char *ptr = &buffer[0];
+    fread(ptr, sizeof(char), 1024, version_file);
+    
+    char version_buffer[255];
+    memset(version_buffer, 0, 255);
+    char *pp = &version_buffer[0];
+    pp += sprintf(pp, "version: %s\n", buffer);
+    
+    fbx_string version_string = fbx_string((char*)&version_buffer[0], (pp - version_buffer) - 1);
+    arrpush(strings, version_string);
+    
+    fclose(version_file);
     
     // get all strings from mesh and then mesh parts
     for(int i = 0; i < _scene.num_meshes; ++i) {
@@ -958,13 +956,15 @@ void fbx_importer::serialize() {
     
     int ret = fbx_zlib::compress(compressed, &bound, (u8*)serialized_buffer, len);
     if(ret != Z_OK) {
-        __debugbreak(); // failed to compress
+        importer_success_code = FBX_IMPORTER_CODE::FAILED_CANT_COMPRESS_DATA;
+        return;
     }
     
     // save to disc
     FILE *out = fopen(output.ptr, "wb");
     if(!out) {
-        __debugbreak(); // failed to open output file
+        importer_success_code = FBX_IMPORTER_CODE::FAILED_CANT_SAVE_OUTPUT_FILE;
+        return;
     }
     
     char buffer_size_str[32] = {0};
@@ -974,7 +974,8 @@ void fbx_importer::serialize() {
     int buffer_size_write_result = fwrite(buffer_size_str, sizeof(u8), ll, out);
     int write_result = fwrite(compressed, sizeof(u8), bound, out);
     if(!write_result || !buffer_size_write_result) {
-        __debugbreak(); // failed to fwrite
+        importer_success_code = FBX_IMPORTER_CODE::FAILED_CANT_WRITE_TO_DISK;
+        return;
     }
     fclose(out);
     
@@ -1005,7 +1006,7 @@ fbx_string::fbx_string(const int size) {
     len = size;
     
     if(fbx_string::BACK_BUFFER_PTR >= fbx_string::BACK_BUFFER) {
-        __debugbreak();
+        __debugbreak(); // ran out of string space.
     }
 }
 

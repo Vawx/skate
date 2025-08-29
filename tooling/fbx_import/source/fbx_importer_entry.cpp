@@ -32,9 +32,16 @@ int main(int argc, char **argv) {
         version_file_dir[version_file_dir_len++] = file_ext[i];
     }
     
+    // check to see if version file is there
+    FILE *t = fopen(version_file_dir, "r");
+    if(!t) {
+        return FBX_IMPORTER_CODE::FAILED_MISSING_VERSION_FILE;
+    }
+    fclose(t);
+    
     fbx_dir version_dir = fbx_dir(version_file_dir);
     fbx_dir source_dir = fbx_dir(argv[1]);
     fbx_dir output_dir = fbx_dir(argv[2]);
 	fbx_importer importer(&version_dir, &source_dir, &output_dir, true);
-    return 0;
+    return importer.importer_success_code;
 }

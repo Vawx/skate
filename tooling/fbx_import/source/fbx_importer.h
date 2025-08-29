@@ -240,12 +240,26 @@ struct fbx_dir {
     u32 len;
 };
 
+enum FBX_IMPORTER_CODE {
+    SUCCESS                                     = 0,
+    FAILED_INVALID_FILE_PATH                    = 1,
+    FAILED_INVALID_FILE_TYPE_OR_CURRUPT         = 2,
+    FAILED_INVALID_VERSION                      = 3,
+    FAILED_MISSING_VERSION_FILE                 = 4,
+    FAILED_CANT_GENERATE_INDEX_BUFFER           = 5,
+    FAILED_CANT_COMPRESS_DATA                   = 6,
+    FAILED_CANT_SAVE_OUTPUT_FILE                = 7,
+    FAILED_CANT_WRITE_TO_DISK                   = 8,
+    COUNT                                       = 9
+};
+
 class fbx_importer {
     public:
     
 	fbx_importer() : temp_buffer(nullptr), temp_buffer_ptr(nullptr), temp_buffer_size(0), hold_buffer(nullptr), hold_buffer_ptr(nullptr), hold_buffer_size(0), serialized_buffer(nullptr), serialized_buffer_ptr(nullptr), serialized_buffer_size(0), id_count(0), strings(nullptr) {}
 	fbx_importer(const fbx_dir *version_dir, const fbx_dir *source_dir, const fbx_dir *output_dir, bool output_debug);
     
+    FBX_IMPORTER_CODE importer_success_code;
     bool output_uncompressed;
     
 	private:
