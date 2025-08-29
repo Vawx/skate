@@ -130,41 +130,47 @@ namespace str_util {
 };
 
 static char *mat4_serialize(um_mat in, char *buffer) {
-    buffer += sprintf(buffer, "%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f", in.m[0], in.m[1], in.m[2], in.m[3],
-                      in.m[4], in.m[5], in.m[6], in.m[7],
-                      in.m[8], in.m[9], in.m[10], in.m[11],
-                      in.m[12], in.m[13], in.m[14], in.m[15]);
-    return buffer;
+    char *buffer_int = buffer;
+    buffer_int += sprintf(buffer_int, "%.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f %.4f:", in.m[0], in.m[1], in.m[2], in.m[3],
+                          in.m[4], in.m[5], in.m[6], in.m[7],
+                          in.m[8], in.m[9], in.m[10], in.m[11],
+                          in.m[12], in.m[13], in.m[14], in.m[15]);
+    return buffer_int;
 }
 
 static char *view_node_serialize(viewer_node *node, char *buffer) {
-    const int GEO_TO_NODE = 0;
-    const int NODE_TO_PARENT = 1;
-    const int NODE_TO_WORLD = 2;
-    const int GEO_TO_WORLD  = 3;
-    const int NORMAL_TO_WORLD = 4;
-    const int MAT_COUNT = 5;
+    const int PARENT_IDX = 0;
+    const int GEO_TO_NODE = 1;
+    const int NODE_TO_PARENT = 2;
+    const int NODE_TO_WORLD = 3;
+    const int GEO_TO_WORLD  = 4;
+    const int NORMAL_TO_WORLD = 5;
+    const int MAT_COUNT = 6;
     
+    char *buffer_int = buffer;
     for(int i = 0; i < MAT_COUNT; ++i) {
         switch(i) {
+            case PARENT_IDX: {
+                buffer_int += sprintf(buffer_int, "%d,", node->parent_index);
+            } break;
             case GEO_TO_NODE: {
-                buffer = mat4_serialize(node->geometry_to_node, buffer);
+                buffer_int = mat4_serialize(node->geometry_to_node, buffer_int);
             } break;
             case NODE_TO_PARENT: {
-                buffer = mat4_serialize(node->node_to_parent, buffer);
+                buffer_int = mat4_serialize(node->node_to_parent, buffer_int);
             } break;
             case NODE_TO_WORLD: {
-                buffer = mat4_serialize(node->node_to_world, buffer);
+                buffer_int = mat4_serialize(node->node_to_world, buffer_int);
             } break;
             case GEO_TO_WORLD: {
-                buffer = mat4_serialize(node->geometry_to_world, buffer);
+                buffer_int = mat4_serialize(node->geometry_to_world, buffer_int);
             } break;
             case NORMAL_TO_WORLD: {
-                buffer = mat4_serialize(node->normal_to_world, buffer);
+                buffer_int = mat4_serialize(node->normal_to_world, buffer_int);
             } break;
         }
     }
-    return buffer;
+    return buffer_int;
 }
 
 fbx_string fbx_importer::transform_mesh(viewer_mesh *mesh) {
@@ -884,14 +890,26 @@ void fbx_importer::load_scene() {
 }
 
 void fbx_importer::serialize() {
-    char version_buffer[255];
-    memset(version_buffer, 0, 255);
-    char *pp = &version_buffer[0];
-    pp += sprintf(pp, "version: %.3f\n", VERSION);
-    version_buffer[pp - version_buffer] = '\0';
     
-    fbx_string version_string = fbx_string((char*)&version_buffer[0], pp - version_buffer);
-    arrpush(strings, version_string);
+    // version file and validation
+    char buffer[1024] = {0};
+    FILE *version_file = fopen(version.ptr, "r+");
+    if(!version_file) __debugbreak(); // cant find version file: bad
+    
+    if(version_file) {
+        char *ptr = &buffer[0];
+        fread(ptr, sizeof(char), 1024, version_file);
+        
+        char version_buffer[255];
+        memset(version_buffer, 0, 255);
+        char *pp = &version_buffer[0];
+        pp += sprintf(pp, "version: %s\n", buffer);
+        
+        fbx_string version_string = fbx_string((char*)&version_buffer[0], (pp - version_buffer) - 1);
+        arrpush(strings, version_string);
+        
+        fclose(version_file);
+    }
     
     // get all strings from mesh and then mesh parts
     for(int i = 0; i < _scene.num_meshes; ++i) {
@@ -964,10 +982,11 @@ void fbx_importer::serialize() {
     alloc_free(compressed);
 }
 
-fbx_importer::fbx_importer(const fbx_dir *source_dir, const fbx_dir *output_dir, bool output_debug) : temp_buffer(nullptr), temp_buffer_ptr(nullptr), temp_buffer_size(0), hold_buffer(nullptr), hold_buffer_ptr(nullptr), hold_buffer_size(0), serialized_buffer(nullptr), serialized_buffer_ptr(nullptr), serialized_buffer_size(0), id_count(0), strings(nullptr) {
+fbx_importer::fbx_importer(const fbx_dir *version_dir, const fbx_dir *source_dir, const fbx_dir *output_dir, bool output_debug) : temp_buffer(nullptr), temp_buffer_ptr(nullptr), temp_buffer_size(0), hold_buffer(nullptr), hold_buffer_ptr(nullptr), hold_buffer_size(0), serialized_buffer(nullptr), serialized_buffer_ptr(nullptr), serialized_buffer_size(0), id_count(0), strings(nullptr) {
     output_uncompressed = true; //output_debug;
     memcpy(source.ptr, source_dir->ptr, source_dir->len);
     memcpy(output.ptr, output_dir->ptr, output_dir->len);
+    memcpy(version.ptr, version_dir->ptr, version_dir->len);
     load_scene();
     
     alloc_free(fbx_string::BACK_BUFFER);

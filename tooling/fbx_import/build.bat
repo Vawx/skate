@@ -5,7 +5,7 @@ IF NOT DEFINED clset (call "C:\Program Files\Microsoft Visual Studio\2022\Commun
 set exe_name="skate_fbx_import"
 set build_options=
 
-set debug_flags=/O2i /Zi /EHsc
+set debug_flags=/Zi /EHsc
 
 set compile_flags=-nologo %debug_flags%
 

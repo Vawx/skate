@@ -28,6 +28,19 @@
 #define s_deg(a) ((a)*s_rad_to_deg)
 #define s_turn(a) ((a)*s_turn_to_deg)
 
+static bool in_ascii_number_range(char in) {return in <= 57 && in >= 48;}
+static bool could_be_floating_point(char *in, int len) {
+    for(int i = 0; i < len; ++i) {
+        if(in[i] != '.' && in[i] != '-') {
+            if(!in_ascii_number_range(in[i])) {
+                return false;
+            }
+        } 
+    }
+    return true;
+    
+}
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
@@ -40,6 +53,22 @@ typedef int64_t s64;
 
 typedef float r32;
 typedef double r64;
+
+#define PRECISION_MAX
+const r64 precision[PRECISION_MAX] = {
+    0.1f,
+    0.01f,
+    0.001f,
+    0.0001f,
+    0.00001f,
+    0.000001f,
+    0.0000001f,
+    0.00000001f,
+    0.000000001f,
+    0.0000000001f,
+    0.00000000001f,
+    0.000000000001f,
+};
 
 #define stmnt(s) do{ s }while(0)
 
@@ -157,6 +186,188 @@ struct skate_image_file_t {
 
 static skate_image_file_t open_texture_file(const skate_directory_t *dir);
 
+struct skate_string_core_t {
+    skate_buffer_t string_buffer;
+    void reset();
+};
+
+static skate_string_core_t *string_core();
+
+struct skate_string_t {
+    public:
+    skate_string_t() : ptr(nullptr), len(0), f(0.f), dec_init(false), is_floating(false), user_flag(false) {}
+    skate_string_t(const char *in_ptr) : dec_init(false), is_floating(false), user_flag(false) {
+        if(in_ptr == nullptr) __debugbreak();
+        len = (u32)strlen(in_ptr);
+        ptr = string_core()->string_buffer.pos;
+        string_core()->string_buffer.pos += len + 1;
+        memcpy(ptr, in_ptr, len);
+        ptr[len] = '\0';
+        
+        init_dec();
+    }
+    
+    skate_string_t(const char *in_ptr, const u32 in_len) : dec_init(false), is_floating(false), user_flag(false) {
+        if(in_ptr == nullptr || in_len <= 0) __debugbreak();
+        len = in_len;
+        ptr = string_core()->string_buffer.pos;
+        string_core()->string_buffer.pos += len + 1;
+        memcpy(ptr, in_ptr, len);
+        ptr[len] = '\0';
+        
+        init_dec();
+    }
+    
+    bool compare(skate_string_t *in) {
+        if(in->len != len) return false;
+        u32 c = 0;
+        while(c != len) {
+            if(in->ptr[c] != ptr[c]) {
+                return false;
+            }
+            ++c;
+        }
+        return true;
+    }
+    
+    char *find(const char *in, const u32 in_len) {
+        bool success = true;
+        char *temp = (char*)in;
+        for(int i = 0; i < len; i++) {
+            if(*temp == ptr[i]) {
+                ++temp;
+                if(temp - (char*)ptr >= in_len) {
+                    return (char*)&ptr[i];
+                }
+            } else {
+                temp = (char*)in;
+            }
+        }
+        
+    }
+    
+    char *find(const skate_string_t *str) {
+        return find((char*)str->ptr, str->len);
+    }
+    
+    s64 to_int() {
+        if(is_floating) {
+            return (s64)f;
+        } else {
+            return i;
+        }
+    }
+    
+    r64 to_float() {
+        if(is_floating) {
+            return f;
+        } else {
+            return (r64)i;
+        }
+    }
+    
+    
+    skate_string_t &operator=(const skate_string_t &in) {
+        ptr = in.ptr;
+        len = in.len;
+        user_flag = in.user_flag;
+        dec_init = false;
+        is_floating = false;
+        init_dec();
+        return *this;
+    }
+    
+    union {
+        u8 *ptr;
+        char *c_ptr;
+    };
+    u32 len;
+    
+    bool user_flag;
+    
+    private:
+    
+    s32 convert_int() {
+        s32 result = 1;
+        u64 j = 1;
+        
+        for(int j = 0, i = 0; i < len; ++i) {
+            if(ptr[i] == '-') {s_assert(i == 0); result *= -1; continue;}
+            s_assert(ptr[i] >= 48 && ptr[i] <= 57); // must be integer
+            
+            s32 x = (ptr[i] - '0');
+            if(j) {
+                x *= j;
+            }
+            result += x;
+            j *= 10;
+        }
+        return result - 1; // start at 1 so we dont do 0 * -1
+    }
+    
+    r64 convert_float() {
+        r64 result = 0;
+        
+        char *decimal = &c_ptr[len - 1];
+        while(*decimal != '.') {--decimal;}
+        
+        int decimal_count = &c_ptr[len - 1] - decimal;
+        ++decimal;
+        for(int i = 0; i < decimal_count; ++i) {
+            s_assert(decimal[i] >= 48 && decimal[i] <= 57); // must be integer
+            if(decimal[i] == '0') continue;
+            
+            s32 x = decimal[i] - '0';
+            result += (r64)x * (r32)precision[i];
+        }
+        
+        char *whole = decimal - 2;
+        int j = 1;
+        while(whole >= c_ptr) {
+            if(*whole == '-') {--whole; continue;}
+            
+            r32 x = *whole - '0';
+            result += x * j;
+            --whole;
+            j *= 10;
+        }
+        
+        if(c_ptr[0] == '-') {result = -result;}
+        return result;
+    }
+    
+    void init_dec() {
+        if(dec_init) return;
+        
+        // check that it is actually a number
+        bool success = true;
+        for(int i = 0; i < len; ++i) {
+            if(!could_be_floating_point(c_ptr, len)) {
+                success = false;
+                break;
+            }
+        }
+        
+        if(success) {
+            // clarify if this is a floating point by checking for decible
+            if(strstr(c_ptr, ".")) {
+                is_floating = true;
+                f = convert_float();
+            } else {
+                i = convert_int();
+            }
+        }
+        
+        dec_init = true;
+    }
+    
+    union {
+        r64 f;
+        s64 i;
+    };
+    bool dec_init;
+    bool is_floating;
+};
 
 #define SKATE_TYPES_H
 #endif //SKATE_TYPES_H

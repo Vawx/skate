@@ -232,8 +232,11 @@ static void init_default_level() {
     }
     
     {
+        skate_directory_t dir = get_directory_for("skate_anim_test_seq.model", SKATE_DIRECTORY_MESH);
+        skate_render_obj_t *obj = get_render_obj(&dir);
+        skate_entity_t *ent = get_entity_rendered(obj);
         
-        
+        printf("");
     }
 }
 
@@ -385,12 +388,16 @@ static void init_default_view() {
     sokol->default_view.func = default_view_velocity_tick;
 }
 
+static void sokol_logger_func(const char* tag, uint32_t log_level, uint32_t log_item, const char* message, uint32_t line_nr, const char* filename, void* user_data) {
+    
+}
+
 static void sokol_init() {
     skate_sokol_t *sokol = get_sokol();
     
     sg_desc desc = {};
     desc.environment = sglue_environment();
-    desc.logger.func = slog_func;
+    desc.logger.func = sokol_logger_func;
     sg_setup(&desc);
     
     sokol->default_pass_action.colors[0].load_action = SG_LOADACTION_CLEAR;

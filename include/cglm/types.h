@@ -57,20 +57,20 @@
 
 #if CGLM_HAVE_BUILTIN_ASSUME_ALIGNED
 #  define CGLM_ASSUME_ALIGNED(expr, alignment) \
-     __builtin_assume_aligned((expr), (alignment))
+__builtin_assume_aligned((expr), (alignment))
 #else
 #  define CGLM_ASSUME_ALIGNED(expr, alignment) (expr)
 #endif
 
 #if (defined(__STDC_VERSION__) && __STDC_VERSION__ >= 201112L)
 # define CGLM_CASTPTR_ASSUME_ALIGNED(expr, type) \
-   ((type*)CGLM_ASSUME_ALIGNED((expr), alignof(type)))
+((type*)CGLM_ASSUME_ALIGNED((expr), alignof(type)))
 #elif defined(_MSC_VER)
 # define CGLM_CASTPTR_ASSUME_ALIGNED(expr, type) \
-   ((type*)CGLM_ASSUME_ALIGNED((expr), __alignof(type)))
+((type*)CGLM_ASSUME_ALIGNED((expr), __alignof(type)))
 #else
 # define CGLM_CASTPTR_ASSUME_ALIGNED(expr, type) \
-   ((type*)CGLM_ASSUME_ALIGNED((expr), __alignof__(type)))
+((type*)CGLM_ASSUME_ALIGNED((expr), __alignof__(type)))
 #endif
 
 typedef int                     ivec2[2];

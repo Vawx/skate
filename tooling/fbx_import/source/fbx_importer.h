@@ -1,9 +1,6 @@
 
 #ifndef FBX_IMPORTER_H
 
-
-static const float VERSION = 0.002;
-
 #include "ufbx/ufbx.h"
 
 #include <string.h>
@@ -247,7 +244,7 @@ class fbx_importer {
     public:
     
 	fbx_importer() : temp_buffer(nullptr), temp_buffer_ptr(nullptr), temp_buffer_size(0), hold_buffer(nullptr), hold_buffer_ptr(nullptr), hold_buffer_size(0), serialized_buffer(nullptr), serialized_buffer_ptr(nullptr), serialized_buffer_size(0), id_count(0), strings(nullptr) {}
-	fbx_importer(const fbx_dir *source_dir, const fbx_dir *output_dir, bool output_debug);
+	fbx_importer(const fbx_dir *version_dir, const fbx_dir *source_dir, const fbx_dir *output_dir, bool output_debug);
     
     bool output_uncompressed;
     
@@ -255,6 +252,7 @@ class fbx_importer {
     
     fbx_dir source;
     fbx_dir output;
+    fbx_dir version;
     
 	viewer_scene _scene;
     

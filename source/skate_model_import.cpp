@@ -143,6 +143,28 @@ static T *make_array_from_str_buffer(T *type_buffer, u8 *str_buffer, u32 *out_si
     return type_buffer;
 }
 
+static void push_float_arr_to_mat4(r32 *arr, mat4 out) {
+    out[0][0] = arr[0];
+    out[0][1] = arr[1];
+    out[0][2] = arr[2];
+    out[0][3] = arr[3];
+    
+    out[1][0] = arr[4];
+    out[1][1] = arr[5];
+    out[1][2] = arr[6];
+    out[1][3] = arr[7];
+    
+    out[2][0] = arr[8];
+    out[2][1] = arr[9];
+    out[2][2] = arr[10];
+    out[2][3] = arr[11];
+    
+    out[3][0] = arr[12];
+    out[3][1] = arr[13];
+    out[3][2] = arr[14];
+    out[3][3] = arr[15];
+}
+
 skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
     char *str = (char*)strstr((const char*)source->ptr, "model");
     if(!str) { LOG_YELL("trying to import a model that is not .model file: %s", source->ptr); }
@@ -187,8 +209,8 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
         next_state: // each state comes back up here with goto after updating state. could be a loop
         switch(mesh_import_state) {
             case MESH_STATE_ORDER::VERSION: {
-                char buffer[255] = {0};
-                char *ptr = &buffer[0];
+                char loaded_buffer[255] = {0};
+                char *loaded_buffer_ptr = &loaded_buffer[0];
                 hold_buffer_ptr = (u8*)temp;
                 
                 while(*hold_buffer_ptr != '\n') {
@@ -196,14 +218,34 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                         ++hold_buffer_ptr;
                         continue;
                     }
-                    *ptr++ = *hold_buffer_ptr++;
+                    *loaded_buffer_ptr++ = *hold_buffer_ptr++;
                 }
-                buffer[ptr - buffer] = '\0';
+                loaded_buffer[loaded_buffer_ptr - loaded_buffer] = '\0';
                 
-                r32 version = atof(buffer);
+                char version_buffer[1024] = {0};
+                FILE *version_file = fopen("../tooling/fbx_import/build/.version", "rb");
+                LOG_PANIC_COND(version_file != nullptr, "UNABLE TO FIND VERSION FILE");
+                
+                char *version_ptr = &version_buffer[0];
+                version_ptr += fread(version_ptr, sizeof(char), 1024, version_file);
+                
+                u32 c = 0;
+                for(int i = 0; i < version_ptr - version_buffer; ++i) {
+                    if(version_buffer[i] == '\n') {c = i - 1; break;}
+                }
+                memset(&version_buffer[c], 0, 1024 - (version_ptr - version_buffer));
+                
+                bool success = true;
+                for(int i = 0; i < version_ptr - version_buffer; ++i) {
+                    if(version_buffer[i] != loaded_buffer[i]) {
+                        success = false;
+                        break;
+                    }
+                }
+                fclose(version_file);
                 
                 // invalid version. old export? or bad file
-                s_assert((s32)1000 * version == (s32)1000 * EXPECTED_VERSION);
+                LOG_PANIC_COND(success, "Invalid version for %s. File is version: %s. File expected to be version: %s", source_dir.ptr, version_buffer, loaded_buffer);
                 
                 temp = (char*)hold_buffer_ptr;
                 hold_buffer_ptr = hold_buffer;
@@ -281,8 +323,10 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                 goto next_state;
             } break;
             case MESH_STATE_ORDER::INSTANCES: {
-                import_result.instances_size = import_result.num_instances * sizeof(u32);
-                import_result.instances_ptr = get_comma_seperated_integers((char*)uncompressed_data, uncompressed_size, INSTANCES_PTR_ID, (char*)source->ptr, import_result.instances_size);
+                if(import_result.num_instances) {
+                    import_result.instances_size = import_result.num_instances * sizeof(u32);
+                    import_result.instances_ptr = get_comma_seperated_integers((char*)uncompressed_data, uncompressed_size, INSTANCES_PTR_ID, (char*)source->ptr, import_result.instances_size);
+                }
                 mesh_import_state = MESH_STATE_ORDER::BONE_INDICES;
                 goto next_state;
             } break;
@@ -393,10 +437,14 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                             if(*temp_bsi == ' ' || *temp_bsi == '[') {
                                 import_result.blend_shape_image.ptr = nullptr;
                             } else {
-                                import_result.blend_shape_image.ptr = sokol_skate::mem_alloc(import_result.blend_shape_image.ptr_size);
-                                u8 *sip = import_result.blend_shape_image.ptr;
-                                while(*temp_bsi != ' ' && *temp_bsi != '[') {
-                                    *sip++ = *temp_bsi++;
+                                if(import_result.blend_shape_image.ptr_size) {
+                                    import_result.blend_shape_image.ptr = sokol_skate::mem_alloc(import_result.blend_shape_image.ptr_size);
+                                    u8 *sip = import_result.blend_shape_image.ptr;
+                                    while(*temp_bsi != ' ' && *temp_bsi != '[') {
+                                        *sip++ = *temp_bsi++;
+                                    }
+                                } else {
+                                    import_result.blend_shape_image.ptr = nullptr;
                                 }
                             }
                         } break; 
@@ -409,17 +457,93 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                 goto next_state;
             } break;
             case MESH_STATE_ORDER::NODES: {
+                if(import_result.num_nodes == 0) break;
+                const u8 EXPECTED_STRUCT_MEMBERS_COUNT = (sizeof(mat4) / sizeof(r32)) * 5;
+                
+                import_result.nodes_ptr_size = import_result.num_nodes * sizeof(skate_model_viewer_node_t);
+                import_result.nodes_ptr = sokol_skate::mem_alloc(import_result.nodes_ptr_size);
+                
                 hold_buffer_ptr = hold_buffer;
                 char *blend_shape_image_ptr = (char*)uncompressed_data;
                 char *found = find_matching_in_buffer(blend_shape_image_ptr, uncompressed_size, (char*)NODES_PTR_ID);
                 LOG_YELL_COND(found, "unable to find %s in model file %s", NODES_PTR_ID, source->ptr);
                 
+                char *temp_nodes = found;
                 
-                
-            } break;
-            // IF MESH_STATE_ORDER IS EXPANDED THERE NEEDS TO BE A STATE SET AND GOTO "next_state" ADDED HERE.
+                char *continuation_string = temp_nodes;
+                for(int i = 0; i < import_result.num_nodes; ++i) {
+                    skate_model_viewer_node_t *view_node = (skate_model_viewer_node_t*)&import_result.nodes_ptr[i * sizeof(skate_model_viewer_node_t)];
+                    
+                    skate_string_t *arr = nullptr;
+                    char *start = *continuation_string == ':' ? continuation_string + 1 : continuation_string;
+                    char *end = *start == ':' ? start + 1 : start;
+                    
+                    char *cc = start;
+                    while(*cc != ',') {++cc;}
+                    
+                    skate_string_t pi(start, cc - start);
+                    view_node->parent_idx = pi.to_int();
+                    start = cc + 1;
+                    
+                    int count = 0;
+                    while(count < MODEL_VIEW_NODE_ORDER::COUNT) {
+                        if(*end++ == ':') ++count;
+                    }
+                    
+                    char str_buffer[255] = {0};
+                    char *str_ptr = &str_buffer[0];
+                    
+                    bool next_start = true;
+                    
+                    u32 arr_count = 0;
+                    while(start != end) {
+                        if(*start == ' ' || *start == ':') {
+                            skate_string_t s(str_buffer, str_ptr - str_buffer);
+                            if(next_start) {
+                                s.user_flag = true;
+                                next_start = false;
+                            } else {
+                                if(*start == ':') next_start = true;
+                            }
+                            
+                            ++start;
+                            arrpush(arr, s);
+                            ++arr_count;
+                            
+                            str_ptr = &str_buffer[0];
+                        } else {
+                            *str_ptr++ = *start++;
+                        }
+                    }
+                    
+                    // model_viewer_node_t has 6 members.
+                    // 1 int and 5 mat4. this means we will have a 
+                    // string for 1 int and all floating point elements
+                    // for all mat4, or 16 * 5 + 1 = 81. since we got the 1 int
+                    // earlier, we can subtract that 1, expecting 80
+                    s_assert(arr_count == EXPECTED_STRUCT_MEMBERS_COUNT); 
+                    
+                    r32 fbucket[EXPECTED_STRUCT_MEMBERS_COUNT] = {0};
+                    for(int fbxi = 0; fbxi < EXPECTED_STRUCT_MEMBERS_COUNT; ++fbxi) {fbucket[fbxi] = 0.f;}
+                    r32 *fbptr = &fbucket[0];
+                    
+                    for(int fb = 0; fb < EXPECTED_STRUCT_MEMBERS_COUNT; ++fb) {
+                        *fbptr++ = arr[fb].to_float();
+                    }
+                    
+                    fbptr = &fbucket[0];
+                    push_float_arr_to_mat4(fbptr, view_node->geometry_to_node); fbptr += 16;
+                    push_float_arr_to_mat4(fbptr, view_node->node_to_parent); fbptr += 16;
+                    push_float_arr_to_mat4(fbptr, view_node->node_to_world); fbptr += 16;
+                    push_float_arr_to_mat4(fbptr, view_node->geometry_to_world); fbptr += 16;
+                    push_float_arr_to_mat4(fbptr, view_node->normal_to_world); 
+                    
+                    continuation_string = end;
+                    
+                } break;
+                // IF MESH_STATE_ORDER IS EXPANDED THERE NEEDS TO BE A STATE SET AND GOTO "next_state" ADDED HERE.
+            }
         }
-        
         // that was the mesh header, now for each mesh piece
         import_result.parts = (skate_model_import_part_t*)sokol_skate::mem_alloc(sizeof(skate_model_import_part_t) * import_result.num_parts);
         u32 mesh_part_idx = 0;
@@ -563,7 +687,7 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
 
 skate_model_import_t *skate_import_t::get_or_load_model(const skate_directory_t *dir) {
     for(int i = 0; i < model_import_buffer.count(); ++i) {
-        skate_model_import_t *import = model_import_buffer.as_idx<skate_model_import_t>(i * sizeof(model_import_buffer.type_size));
+        skate_model_import_t *import = model_import_buffer.as_idx<skate_model_import_t>(i);
         if(strcmp((char*)import->source_dir.ptr, (char*)dir->ptr) == 0) {
             return import;
         }

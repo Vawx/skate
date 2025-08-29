@@ -1,4 +1,22 @@
 
+static skate_string_core_t *string_core() {
+    static skate_string_core_t core;
+    if(core.string_buffer.ptr == nullptr) {
+        core.string_buffer = alloc_buffer(sizeof(u8), mega(1));
+    }
+    return &core;
+}
+
+void skate_string_core_t::reset() {
+    // this moves the position pointer back to the start, resetting the whole
+    // string buffer.
+    // this is here for things like loading new levels or in states
+    // where it makes sense to...
+    
+    // NOT A GENERAL PURPOSE FEATURE
+    string_core()->string_buffer.pos = string_core()->string_buffer.ptr;
+}
+
 namespace sokol_skate {
     static u8 *mem_alloc(const s32 size) {
         u8 *ptr = nullptr;

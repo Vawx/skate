@@ -1,8 +1,6 @@
 /* date = July 30th 2025 8:14 pm */
 #ifndef SKATE_FBX_IMPORT_H
 
-static const r32 EXPECTED_VERSION = 0.002f;
-
 #define PART_ID                         "{mesh_part}"
 #define PART_AABB_MIN_ID                "{aabb_min}"
 #define PART_AABB_MAX_ID                "{aabb_max}"
@@ -68,10 +66,41 @@ namespace BLEND_SHAPE_ORDER {
     const int COUNT         = 7;
 };
 
+namespace MODEL_VIEW_NODE_ORDER {
+    const int GEOMETRY_TO_NODE    = 0;
+    const int NODE_TO_PARENT      = 1;
+    const int NODE_TO_WORLD       = 2;
+    const int GEOMETRY_TO_WORLD   = 3;
+    const int NORMAL_TO_WORLD     = 4;
+    const int COUNT               = 5;
+};
+
 struct skate_model_import_part_vertice_t {
     r32 x, y, z;
     r32 nx, ny, nz;
     r32 ux, uy, vertex_idx;
+};
+
+struct skate_model_viewer_node_t {
+    s32 parent_idx;
+    
+	mat4 geometry_to_node;
+	mat4 node_to_parent;
+	mat4 node_to_world;
+	mat4 geometry_to_world;
+	mat4 normal_to_world;
+};
+
+struct skate_model_anim_node_t {
+    r32 time_begin;
+    r32 framerate;
+	s32 num_frames;
+    vec3 const_rot;
+	vec3 const_pos;
+	vec3 const_scale;
+	vec3 rot;
+	vec3 *pos;
+	vec3 *scale;
 };
 
 struct skate_model_import_part_t {
