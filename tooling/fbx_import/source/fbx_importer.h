@@ -185,9 +185,12 @@ enum PART_HEADER_IDS {
 	PART_HEADER_IDS_COUNT
 };
 
+// num_frames, time_begin, framerate
+#define ANIMATION_HEADER "%d,%.4f,%.4f"
+
 #define PART_HEADER "%d,%d,%d,%d,%d,"
 
-// NOTE(Kyle) thi is for _every_ MESH
+// NOTE(Kyle) this is for _every_ MESH
 // mesh_path, nodes_count, instances_count, skinned?, num_blend_shapes, num_bones, instances_ptr, bone_indices_ptr, bone_matrices_ptr, blend_shapes_ptr, blend_shape_image_ptr, 
 #define INSTANCES_PTR_ID          "{instances_ptr}"
 #define BONE_INDICES_PTR_ID       "{bone_indices_ptr}"
@@ -195,8 +198,13 @@ enum PART_HEADER_IDS {
 #define BLEND_SHAPES_PTR_ID       "{blend_shapes_ptr}"
 #define BLEND_SHAPE_IMAGE_PTR_ID  "{blend_shape_image_ptr}"
 #define NODES_PTR_ID              "{nodes_ptr}"
+#define NODE_START_ID             "{an}"
 
 #define MESH_HEADER "%s,%d,%d,%d,%d,%d,%d, " 
+
+#define ANIMATION_ROT_PTR_ID      "{a_rot}"
+#define ANIMATION_POS_PTR_ID      "{a_pos}"
+#define ANIMATION_SCALE_PTR_ID    "{a_scale}"
 
 enum MESH_HEADER_IDS {
 	INSTANCES,
@@ -271,7 +279,8 @@ class fbx_importer {
 	viewer_scene _scene;
     
     fbx_string transform_part_header(viewer_mesh_part* part);
-    fbx_string transform_mesh(viewer_mesh *mesh);
+    fbx_string transform_mesh(viewer_mesh *mesh, viewer_scene *scene);
+    fbx_string transform_animation(viewer_anim *anim, viewer_scene *scene);
     
 	void read_node(viewer_node* vnode, ufbx_node* node);
 	fbx_image pack_blend_channels_to_image(ufbx_mesh* mesh, ufbx_blend_channel** channels, s32 num_channels);

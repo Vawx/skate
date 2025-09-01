@@ -170,7 +170,7 @@ static char *view_node_serialize(viewer_node *node, char *buffer) {
     return buffer_int;
 }
 
-fbx_string fbx_importer::transform_mesh(viewer_mesh *mesh) {
+fbx_string fbx_importer::transform_mesh(viewer_mesh *mesh, viewer_scene *scene) {
     temp_buffer_ptr = temp_buffer;
     hold_buffer_ptr = hold_buffer;
     
@@ -266,6 +266,128 @@ fbx_string fbx_importer::transform_part_header(viewer_mesh_part *part) {
     hold_buffer_ptr += sprintf(hold_buffer_ptr, "%s", temp_buffer);
     *hold_buffer_ptr++ = '\0';
     return fbx_string(hold_buffer, hold_buffer_ptr - hold_buffer);
+}
+
+static fbx_string str_from_float(r32 value) {
+    char buffer[255] = {0};
+    char *ptr = &buffer[0];
+    char *pptr = ptr;
+    pptr += sprintf(ptr, "%.4f", value);
+    fbx_string str = fbx_string(ptr, pptr - ptr);
+    return str;
+}
+
+static fbx_string str_from_int(s32 value) {
+    char buffer[255] = {0};
+    char *ptr = &buffer[0];
+    char *pptr = ptr;
+    pptr += sprintf(ptr, "%d", value);
+    fbx_string str = fbx_string(ptr, pptr - ptr);
+    return str;
+}
+
+static fbx_string str_from_quat(um_quat q) {
+    char buffer[255] = {0};
+    char *ptr = &buffer[0];
+    char *pptr = ptr;
+    pptr += sprintf(ptr, "%.4f %.4f %.4f %.4f", q.x, q.y, q.z, q.w);
+    fbx_string str = fbx_string(ptr, pptr - ptr);
+    return str;
+}
+
+static fbx_string str_from_vec3(um_vec3 v) {
+    char buffer[255] = {0};
+    char *ptr = &buffer[0];
+    char *pptr = ptr;
+    pptr += sprintf(ptr, "%.4f %.4f %.4f", v.x, v.y, v.z);
+    fbx_string str = fbx_string(ptr, pptr - ptr);
+    return str;
+}
+
+fbx_string fbx_importer::transform_animation(viewer_anim *anim, viewer_scene *scene) {
+    fbx_string *arr = nullptr;
+    
+    fbx_string anim_count = str_from_int(scene->num_animations);
+    fbx_string name = fbx_string(anim->name, strlen(anim->name));
+    fbx_string time_begin = str_from_float(anim->time_begin);
+    fbx_string time_end = str_from_float(anim->time_end);
+    fbx_string framerate = str_from_float(anim->framerate);
+    fbx_string num_frames = str_from_float(anim->num_frames);
+    
+    arrpush(arr, anim_count);
+    arrpush(arr, name);
+    arrpush(arr, time_begin);
+    arrpush(arr, time_end);
+    arrpush(arr, framerate);
+    arrpush(arr, num_frames);
+    
+    for(int sn = 0; sn < scene->num_nodes; ++sn) {
+        // viewer_node_anim *nodes
+        viewer_node_anim *node = &anim->nodes[sn];
+        fbx_string node_start = fbx_string(NODE_START_ID, 4);
+        fbx_string node_id = str_from_int(sn);
+        fbx_string node_time_begin = str_from_float(node->time_begin);
+        fbx_string node_framerate = str_from_float(node->framerate);
+        fbx_string node_num_frames = str_from_int(node->num_frames);
+        
+        arrpush(arr, node_start);
+        arrpush(arr, node_id);
+        arrpush(arr, node_time_begin);
+        arrpush(arr, node_framerate);
+        arrpush(arr, node_num_frames);
+        
+        fbx_string start_rot = fbx_string(ANIMATION_ROT_PTR_ID, 7);
+        arrpush(arr, start_rot);
+        if(node->rot == nullptr) {
+            fbx_string rot_const = str_from_quat(node->const_rot);
+            arrpush(arr, rot_const);
+        } else {
+            for(int i = 0; i < node->num_frames; ++i) {
+                fbx_string q = str_from_quat(node->rot[i]);
+                arrpush(arr, q);
+            }
+        }
+        
+        fbx_string start_pos = fbx_string(ANIMATION_POS_PTR_ID, 7);
+        arrpush(arr, start_pos);
+        if(node->pos == nullptr) {
+            fbx_string pos_const = str_from_vec3(node->const_pos);
+            arrpush(arr, pos_const);
+        } else {
+            for(int i = 0; i < node->num_frames; ++i) {
+                fbx_string p = str_from_vec3(node->pos[i]);
+                arrpush(arr, p);
+            }
+        }
+        
+        fbx_string start_scale = fbx_string(ANIMATION_SCALE_PTR_ID, 9);
+        arrpush(arr, start_scale);
+        if(node->scale == nullptr) {
+            fbx_string scale_const = str_from_vec3(node->const_scale);
+            arrpush(arr, scale_const);
+        } else {
+            for(int i = 0; i < node->num_frames; ++i) {
+                fbx_string s = str_from_vec3(node->scale[i]);
+                arrpush(arr, s);
+            }
+        }
+        
+        fbx_string end = fbx_string(":", 1);
+        arrpush(arr, end);
+    }
+    
+    hold_buffer_ptr = hold_buffer;
+    for(int i = 0; i < arrlen(arr); ++i) {
+        memcpy(hold_buffer_ptr, arr[i].ptr, arr[i].len);
+        hold_buffer_ptr += arr[i].len;
+        *hold_buffer_ptr++ = ' ';
+    }
+    *hold_buffer_ptr++ = '\0\0';
+    
+    fbx_string result = fbx_string(hold_buffer, hold_buffer_ptr - hold_buffer);
+    
+    arrfree(arr);
+    return result;
 }
 
 void fbx_importer::read_node(viewer_node* vnode, ufbx_node* node) {
@@ -633,12 +755,16 @@ void fbx_importer::read_node_anim(viewer_anim* va, viewer_node_anim* vna, ufbx_a
     
 	bool const_rot = true, const_pos = true, const_scale = true;
     
+    vna->time_begin = 0.f;
+    vna->num_frames = va->num_frames;
+    vna->framerate = va->framerate;
+    
 	// Sample the node's transform evenly for the whole animation stack duration
 	for (s32 i = 0; i < va->num_frames; i++) {
 		double time = stack->time_begin + (double)i / va->framerate;
         
 		ufbx_transform transform = ufbx_evaluate_transform(stack->anim, node, time);
-		vna->rot[i] = ufbx_to_um_quat(transform.rotation);
+        vna->rot[i] = ufbx_to_um_quat(transform.rotation);
 		vna->pos[i] = ufbx_to_um_vec3(transform.translation);
 		vna->scale[i] = ufbx_to_um_vec3(transform.scale);
         
@@ -879,6 +1005,7 @@ void fbx_importer::load_scene() {
 			vs->aabb_max = um_max3(vs->aabb_max, mesh->aabb_max);
 		}
 	}
+    
 	ufbx_free_scene(scene);
     serialize();
     
@@ -911,13 +1038,20 @@ void fbx_importer::serialize() {
     
     // get all strings from mesh and then mesh parts
     for(int i = 0; i < _scene.num_meshes; ++i) {
-        fbx_string mesh_str = transform_mesh(&_scene.meshes[i]);
+        fbx_string mesh_str = transform_mesh(&_scene.meshes[i], &_scene);
         arrpush(strings, mesh_str);
         for(int j = 0; j < _scene.meshes[i].num_parts; ++j) {
             viewer_mesh_part *mm = &_scene.meshes[i].parts[j];
             fbx_string str = transform_part_header(mm);
             arrpush(strings, str);
         }
+    }
+    
+    // get all strings from scene->animations
+    for(int i = 0; i < _scene.num_animations; ++i) {
+        viewer_anim *anim = &_scene.animations[i];
+        fbx_string anim_str = transform_animation(anim, &_scene);
+        arrpush(strings, anim_str);
     }
     
     // to serialize the strings

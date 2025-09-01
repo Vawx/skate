@@ -14,6 +14,11 @@
 #define BLEND_SHAPES_PTR_ID             "{blend_shapes_ptr}:"
 #define BLEND_SHAPE_IMAGE_PTR_ID        "{blend_shape_image_ptr}:"
 #define NODES_PTR_ID                    "{nodes_ptr}"
+#define NODE_START_ID                   "{an}"
+
+#define ANIMATION_ROT_PTR_ID            "{a_rot}"
+#define ANIMATION_POS_PTR_ID            "{a_pos}"
+#define ANIMATION_SCALE_PTR_ID          "{a_scale}"
 
 #define EXPECTED_VERTEX_SIZE 36
 
@@ -33,6 +38,7 @@ enum MESH_STATE_ORDER {
     BLEND_SHAPES,
     BLEND_SHAPE_IMAGE,
     NODES,
+    ANIMATIONS,
 };
 
 // EXPECTED MESH PART STATE ORDER (THIS CAN CYCLE DEPENDING ON NUMBER OF MESH PARTS)
@@ -95,12 +101,28 @@ struct skate_model_anim_node_t {
     r32 time_begin;
     r32 framerate;
 	s32 num_frames;
-    vec3 const_rot;
+    quat const_rot;
 	vec3 const_pos;
 	vec3 const_scale;
-	vec3 rot;
+    quat *rot;
 	vec3 *pos;
 	vec3 *scale;
+};
+
+struct skate_blend_channel_anim_t {
+    r32 const_weight;
+    r32 *weight;
+};
+
+struct skate_anim_t {
+	skate_string_t name;
+    r32 time_begin;
+    r32 time_end;
+    r32 framerate;
+    s32 num_frames;
+    
+    skate_model_anim_node_t *nodes;
+    skate_blend_channel_anim_t *blend_channels;
 };
 
 struct skate_model_import_part_t {
@@ -121,17 +143,20 @@ struct skate_model_import_result_t {
     char name[255];
     u32 name_len;
     
-    u8 *instances_ptr;
+    u8 *instances_ptr; // s32?
     u32 instances_size;
-    u8 *bone_indices_ptr;
+    u8 *bone_indices_ptr; // s32
     u32 bone_indices_size;
-    u8 *bone_matrices_ptr;
+    u8 *bone_matrices_ptr; // mat4
     u32 bone_matrices_size;
-    u8 *blend_shapes_ptr;
+    u8 *blend_shapes_ptr; // skate_blend_channel_anim_t
     u32 blend_shapes_size;
-    u8 *nodes_ptr;
+    u8 *nodes_ptr; // skate_model_viewer_node_t
     u32 nodes_ptr_size;
+    u8 *anim_ptr; // skate_anim_t
+    u32 anim_ptr_size;
     
+    u32 num_animations;
     u32 num_nodes;
     u32 num_bones;
     u32 num_blend_shapes;

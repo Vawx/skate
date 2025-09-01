@@ -20,6 +20,10 @@ set link_flags=/link %link_win32% %link_gl% %link_zlib% %link_jolt% /NODEFAULTLI
 set include_dir=/I ../source/ /I ../include/ /I ../include/Jolt/
 set core=../source/skate_entry.cpp
 
+@echo on
+@echo %time%
+@echo off
+
 if not exist build mkdir build
 pushd build
 cl %build_options% %compile_flags% %core% %include_dir% %link_flags% %lib_paths% /out:%exe_name%.exe

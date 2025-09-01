@@ -92,6 +92,8 @@ const r64 precision[PRECISION_MAX] = {
 
 #include "cglm/cglm.h"
 
+typedef versor quat;
+
 #define glm_vec3_muls(v, s, d) glm_vec3_scale_as((v), (s), (d))
 #define glm_vec3_mulf(v, s, d) glm_vec3_muls((v), (s), (d))
 #define glm_vec3_len(v) glm_vec3_norm((v))
@@ -266,6 +268,9 @@ struct skate_string_t {
         }
     }
     
+    bool is_floating_point() const {
+        return is_floating;
+    }
     
     skate_string_t &operator=(const skate_string_t &in) {
         ptr = in.ptr;
