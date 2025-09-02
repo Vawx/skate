@@ -131,6 +131,9 @@ struct skate_render_binding_t {
     
     vec3 aabb_min;
     vec3 aabb_max;
+    
+    u8 animated;
+    skate_render_animation_t render_anim;
 };
 
 struct skate_render_bindings_t {

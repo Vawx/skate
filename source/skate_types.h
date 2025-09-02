@@ -90,6 +90,10 @@ const r64 precision[PRECISION_MAX] = {
 #define R32_MIN 1.175494E-38
 #define R32_MAX 3.40282347E+38
 
+#define s_min(l, r) (l < r) ? r : l
+#define s_max(l, r) (l > r) ? l : r
+#define s_clamp(a, min_a, max_a) s_min(s_max(a, min_a), max_a)
+
 #include "cglm/cglm.h"
 
 typedef versor quat;

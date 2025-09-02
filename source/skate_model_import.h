@@ -121,7 +121,9 @@ struct skate_anim_t {
     r32 framerate;
     s32 num_frames;
     
-    skate_model_anim_node_t *nodes;
+    skate_model_viewer_node_t *mesh_nodes;
+    skate_model_anim_node_t *anim_nodes;
+    s32 num_nodes;
     skate_blend_channel_anim_t *blend_channels;
 };
 
@@ -201,6 +203,9 @@ class skate_import_t {
     
     skate_buffer_t model_import_buffer;
 };
+
+typedef skate_model_anim_node_t skate_render_anim_node_t;
+typedef skate_anim_t skate_render_animation_t;
 
 #define SKATE_FBX_IMPORT_H
 #endif //SKATE_FBX_IMPORT_H

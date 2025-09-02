@@ -549,7 +549,7 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                 LOG_YELL_COND(found, "unable to find %s in model file %s", NODE_START_ID, source->ptr);
                 
                 char *nnam = found;
-                if(!nnam) {break;}
+                if(!nnam) {import_result.num_animations = 0; break;}
                 
                 while(*nnam != ',') {--nnam;}
                 ++nnam;
@@ -561,8 +561,11 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                 import_result.anim_ptr_size = import_result.num_animations * sizeof(skate_anim_t);
                 import_result.anim_ptr = sokol_skate::mem_alloc(import_result.anim_ptr_size);
                 
+                skate_anim_t *anim_result = (skate_anim_t*)import_result.anim_ptr;
+                
                 s32 anim_count = 0;
                 while(anim_count < import_result.num_animations) {
+                    
                     ++nnam;
                     while(*nnam == ' ') {++nnam;}
                     char *nnamp = nnam;
@@ -571,8 +574,7 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                     char anim_s_buffer[1024] = {0};
                     char *anim_s_ptr = &anim_s_buffer[0];
                     
-                    skate_anim_t anim_result;
-                    anim_result.name = skate_string_t(nnam, nnamp - nnam);
+                    anim_result->name = skate_string_t(nnam, nnamp - nnam);
                     
                     nnam = nnamp;
                     while(*nnam == ' ') {++nnam;}
@@ -582,16 +584,16 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                         if(*nnam == ' ') {
                             switch(idx) {
                                 case 1: {
-                                    anim_result.time_begin = skate_string_t(anim_s_buffer).to_float();
+                                    anim_result->time_begin = skate_string_t(anim_s_buffer).to_float();
                                 } break;
                                 case 2: {
-                                    anim_result.time_end = skate_string_t(anim_s_buffer).to_float();
+                                    anim_result->time_end = skate_string_t(anim_s_buffer).to_float();
                                 } break;
                                 case 3: {
-                                    anim_result.framerate = skate_string_t(anim_s_buffer).to_float();
+                                    anim_result->framerate = skate_string_t(anim_s_buffer).to_float();
                                 } break;
                                 case 4: {
-                                    anim_result.num_frames = skate_string_t(anim_s_buffer).to_float();
+                                    anim_result->num_frames = skate_string_t(anim_s_buffer).to_float();
                                 } break;
                             }
                             
@@ -606,17 +608,29 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                         *anim_s_ptr++ = *nnam++;
                     }
                     
+                    anim_result->mesh_nodes = (skate_model_viewer_node_t*)sokol_skate::mem_alloc(sizeof(skate_model_viewer_node_t) * import_result.num_nodes);
+                    for(int mesh_nodes_idx = 0; mesh_nodes_idx < import_result.num_nodes; ++mesh_nodes_idx) {
+                        skate_model_viewer_node_t *view_node = (skate_model_viewer_node_t*)&import_result.nodes_ptr[mesh_nodes_idx * sizeof(skate_model_viewer_node_t)];
+                        
+                        anim_result->mesh_nodes[mesh_nodes_idx].parent_idx = view_node->parent_idx;
+                        
+                        glm_mat4_copy(view_node->geometry_to_node, anim_result->mesh_nodes[mesh_nodes_idx].geometry_to_node);
+                        glm_mat4_copy(view_node->node_to_parent, anim_result->mesh_nodes[mesh_nodes_idx].node_to_parent);
+                        glm_mat4_copy(view_node->node_to_world, anim_result->mesh_nodes[mesh_nodes_idx].node_to_world);
+                        glm_mat4_copy(view_node->geometry_to_world, anim_result->mesh_nodes[mesh_nodes_idx].geometry_to_world);
+                        glm_mat4_copy(view_node->normal_to_world, anim_result->mesh_nodes[mesh_nodes_idx].normal_to_world);
+                        
+                    }
+                    
                     // header done, now time for nodes
-                    
-                    skate_anim_t skate_anim = {};
-                    
-                    import_result.anim_ptr = sokol_skate::mem_alloc(sizeof(skate_anim_t) * import_result.num_animations);
-                    skate_anim_t *anim_ptr = (skate_anim_t*)import_result.anim_ptr;
-                    
                     char *anim_str = found;
                     for(int anim_idx = 0; anim_idx < import_result.num_animations; ++anim_idx) {
-                        skate_anim.nodes = (skate_model_anim_node_t*)sokol_skate::mem_alloc(sizeof(skate_model_anim_node_t) * import_result.num_nodes);
+                        skate_anim_t *anim_ptr = (skate_anim_t*)&import_result.anim_ptr[anim_idx];
+                        
+                        anim_ptr->anim_nodes = (skate_model_anim_node_t*)sokol_skate::mem_alloc(sizeof(skate_model_anim_node_t) * import_result.num_nodes);
                         for(int node_idx = 0; node_idx < import_result.num_nodes; ++node_idx) {
+                            
+                            skate_model_anim_node_t *anim_node = &anim_ptr->anim_nodes[node_idx];
                             
                             char *r = strstr(anim_str, ANIMATION_ROT_PTR_ID);
                             r += 7 + 1; // (ANIMATION_ROT_PTR_ID)len + space
@@ -698,60 +712,56 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                                 last = (char*)hold_buffer_ptr;
                             }
                             
-                            skate_model_anim_node_t anim_node = {0};
-                            
                             u32 lenn = arrlen(rots);
                             if(lenn <= 4) {
-                                anim_node.const_rot[0] = rots[0].to_float();
-                                anim_node.const_rot[1] = rots[1].to_float();
-                                anim_node.const_rot[2] = rots[2].to_float();
-                                anim_node.const_rot[3] = rots[3].to_float();
-                                anim_node.rot = nullptr;
+                                anim_node->const_rot[0] = rots[0].to_float();
+                                anim_node->const_rot[1] = rots[1].to_float();
+                                anim_node->const_rot[2] = rots[2].to_float();
+                                anim_node->const_rot[3] = rots[3].to_float();
+                                anim_node->rot = nullptr;
                             } else {
-                                anim_node.rot = (quat*)sokol_skate::mem_alloc(lenn * sizeof(r32) * 4);
-                                s_assert(anim_node.rot != nullptr);
+                                anim_node->rot = (quat*)sokol_skate::mem_alloc(lenn * sizeof(r32) * 4);
+                                s_assert(anim_node->rot != nullptr);
                                 skate_string_t *rots_temp = rots;
                                 const int rot_count = lenn / 4;
                                 for(int rr_idx = 0, rr2_idx = 0; rr_idx < rot_count; ++rr_idx) {
                                     for(int e_idx = 0; e_idx < sizeof(quat) / sizeof(r32); ++e_idx) {
-                                        anim_node.rot[rr_idx][e_idx] = rots_temp++->to_float();
+                                        anim_node->rot[rr_idx][e_idx] = rots_temp++->to_float();
                                     }
                                 }
                             }
                             
                             lenn = arrlen(poss);
                             if(lenn <= 3) {
-                                anim_node.const_pos[0] = poss[0].to_float();
-                                anim_node.const_pos[1] = poss[1].to_float();
-                                anim_node.const_pos[2] = poss[2].to_float();
-                                anim_node.pos = nullptr;
+                                anim_node->const_pos[0] = poss[0].to_float();
+                                anim_node->const_pos[1] = poss[1].to_float();
+                                anim_node->const_pos[2] = poss[2].to_float();
+                                anim_node->pos = nullptr;
                             } else {
-                                anim_node.pos = (vec3*)sokol_skate::mem_alloc(lenn * sizeof(r32));
-                                s_assert(anim_node.pos != nullptr);
+                                anim_node->pos = (vec3*)sokol_skate::mem_alloc(lenn * sizeof(r32));
+                                s_assert(anim_node->pos != nullptr);
                                 for(int pp_idx = 0; pp_idx < lenn; ++pp_idx) {
-                                    anim_node.pos[pp_idx][0] = poss[pp_idx].to_float();
-                                    anim_node.pos[pp_idx][1] = poss[pp_idx + 1].to_float();
-                                    anim_node.pos[pp_idx][2] = poss[pp_idx + 2].to_float();
+                                    anim_node->pos[pp_idx][0] = poss[pp_idx].to_float();
+                                    anim_node->pos[pp_idx][1] = poss[pp_idx + 1].to_float();
+                                    anim_node->pos[pp_idx][2] = poss[pp_idx + 2].to_float();
                                 }
                             }
                             
                             lenn = arrlen(scales);
                             if(lenn <= 3) {
-                                anim_node.const_scale[0] = scales[0].to_float();
-                                anim_node.const_scale[1] = scales[1].to_float();
-                                anim_node.const_scale[2] = scales[2].to_float();
-                                anim_node.scale = nullptr;
+                                anim_node->const_scale[0] = scales[0].to_float();
+                                anim_node->const_scale[1] = scales[1].to_float();
+                                anim_node->const_scale[2] = scales[2].to_float();
+                                anim_node->scale = nullptr;
                             } else {
-                                anim_node.scale = (vec3*)sokol_skate::mem_alloc(lenn * sizeof(r32));
-                                s_assert(anim_node.scale != nullptr); 
+                                anim_node->scale = (vec3*)sokol_skate::mem_alloc(lenn * sizeof(r32));
+                                s_assert(anim_node->scale != nullptr); 
                                 for(int ss_idx = 0; ss_idx < lenn; ++ss_idx) {
-                                    anim_node.pos[ss_idx][0] = poss[ss_idx].to_float();
-                                    anim_node.pos[ss_idx][1] = poss[ss_idx + 1].to_float();
-                                    anim_node.pos[ss_idx][2] = poss[ss_idx + 2].to_float();
+                                    anim_node->pos[ss_idx][0] = poss[ss_idx].to_float();
+                                    anim_node->pos[ss_idx][1] = poss[ss_idx + 1].to_float();
+                                    anim_node->pos[ss_idx][2] = poss[ss_idx + 2].to_float();
                                 }
                             }
-                            
-                            memcpy(&skate_anim.nodes[node_idx], &anim_node, sizeof(skate_model_anim_node_t));
                             
                             anim_str = (char*)hold_buffer_ptr;
                             
@@ -760,11 +770,8 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
                             arrfree(scales);
                         }
                     }
-                    
                     ++anim_count;
-                    
-                    memcpy(anim_ptr, &skate_anim, sizeof(skate_anim_t));
-                    anim_ptr += sizeof(skate_anim_t);
+                    anim_result = (skate_anim_t*)import_result.anim_ptr[anim_count * sizeof(skate_anim_t)];
                 }
             } break;
             // IF MESH_STATE_ORDER IS EXPANDED THERE NEEDS TO BE A STATE SET AND GOTO "next_state" ADDED HERE.
@@ -891,16 +898,24 @@ skate_model_import_t::skate_model_import_t(const skate_directory_t *source) {
             last_mesh_found_point += out_string_length;
         }
         
-        // expect EOF or next mesh
+        // expect one of two options:
+        // there is no animation data in this mesh and last_mesh_found_point _should_ be '\0'
+        // if there is animation data, last_mesh_found_point should be the start point for where animation data starts
         ++last_mesh_found_point;
         const char last_char = *last_mesh_found_point;
         if(last_char == '\0') {
-            LOG_TELL("model %s loading completed successfully", source->ptr);
+            LOG_TELL("static model %s loading completed successfully", source->ptr);
             return;
         } else {
-            if(++mesh_part_idx < import_result.num_parts) {
-                last_mesh_found_size = uncompressed_size - (last_mesh_found_point - (char*)uncompressed_data);
-                goto make_mesh;
+            char *found = strstr((char*)uncompressed_data, NODE_START_ID);
+            if(found) {
+                LOG_TELL("skeletal/animated model %s loading completed successfully", source->ptr);
+                return;
+            } else {
+                if(++mesh_part_idx < import_result.num_parts) {
+                    last_mesh_found_size = uncompressed_size - (last_mesh_found_point - (char*)uncompressed_data);
+                    goto make_mesh;
+                }
             }
         }
     }

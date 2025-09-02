@@ -80,11 +80,58 @@ static skate_render_mesh_t *init_render_mesh(const skate_model_import_t *import,
         mm.bind.bindings_count = import->import_result.num_parts;
         glm_vec3_copy(import->import_result.parts[i].aabb_min, mm.bind.bindings[i].aabb_min);
         glm_vec3_copy(import->import_result.parts[i].aabb_max, mm.bind.bindings[i].aabb_max);
+        
+        if(import->import_result.num_animations) {
+            skate_anim_t *anim = (skate_anim_t*)&import->import_result.anim_ptr[i * sizeof(skate_anim_t)];
+            
+            mm.bind.bindings[i].animated = true;
+            mm.bind.bindings[i].render_anim.name = skate_string_t(anim->name);
+            mm.bind.bindings[i].render_anim.time_begin = anim->time_begin;
+            mm.bind.bindings[i].render_anim.time_end = anim->time_end;
+            mm.bind.bindings[i].render_anim.framerate = anim->framerate;
+            mm.bind.bindings[i].render_anim.num_frames = anim->num_frames;
+            
+            const int nodes_size = sizeof(skate_model_anim_node_t) * anim->num_frames;
+            mm.bind.bindings[i].render_anim.anim_nodes = (skate_model_anim_node_t*)sokol_skate::mem_alloc(nodes_size);
+            
+            for(int node_idx = 0; node_idx < import->import_result.num_nodes; ++node_idx) {
+                skate_model_anim_node_t *node = &mm.bind.bindings[i].render_anim.anim_nodes[node_idx];
+                
+                node->time_begin = anim->anim_nodes[node_idx].time_begin;
+                node->framerate = anim->anim_nodes[node_idx].framerate;
+                node->num_frames = anim->anim_nodes[node_idx].num_frames;
+                
+                if(anim->anim_nodes[node_idx].rot) {
+                    node->rot = (quat*)sokol_skate::mem_alloc(sizeof(quat) * anim->anim_nodes[node_idx].num_frames);
+                    memcpy(node->rot, anim->anim_nodes[node_idx].rot, sizeof(quat) * anim->anim_nodes[node_idx].num_frames);
+                } else {
+                    glm_quat_copy(anim->anim_nodes[node_idx].const_rot, node->const_rot);
+                }
+                
+                if(anim->anim_nodes[node_idx].pos) {
+                    node->pos = (vec3*)sokol_skate::mem_alloc(sizeof(vec3) * anim->anim_nodes[node_idx].num_frames);
+                    memcpy(node->pos, anim->anim_nodes[node_idx].pos, sizeof(vec3) * anim->anim_nodes[node_idx].num_frames);
+                } else {
+                    glm_quat_copy(anim->anim_nodes[node_idx].const_pos, node->const_pos);
+                }
+                
+                if(anim->anim_nodes[node_idx].scale) {
+                    node->scale = (vec3*)sokol_skate::mem_alloc(sizeof(vec3) * anim->anim_nodes[node_idx].num_frames);
+                    memcpy(node->scale, anim->anim_nodes[node_idx].scale, sizeof(vec3) * anim->anim_nodes[node_idx].num_frames);
+                } else {
+                    glm_quat_copy(anim->anim_nodes[node_idx].const_scale, node->const_scale);
+                }
+            }
+        }
     }
+    
     u32 idx = sokol->render_pass[RENDER_PASS].mesh_buffer.count();
+    
     mm.outer = outer; // probably render_object
     push_buffer(&sokol->render_pass[RENDER_PASS].mesh_buffer, (u8*)&mm, sizeof(skate_render_mesh_t));
-    return (skate_render_mesh_t*)&sokol->render_pass[RENDER_PASS].mesh_buffer.ptr[idx * sokol->render_pass[RENDER_PASS].mesh_buffer.type_size];
+    
+    int return_idx = idx * sokol->render_pass[RENDER_PASS].mesh_buffer.type_size;
+    return (skate_render_mesh_t*)&sokol->render_pass[RENDER_PASS].mesh_buffer.ptr[return_idx];
 }
 
 static void bind_image_data_to_render_mesh(skate_render_mesh_t *mesh, u8 *image_ptr, u32 image_width, u32 image_height, s32 image_idx, s32 sampler_idx, s8 binding_idx) {
@@ -540,9 +587,7 @@ static void render_mesh_for(int PASS, int binding_idx, int slice_id, skate_rende
             
             mat4 model;
             glm_mat4_identity(model);
-            
-            skate_entity_t *ent = get_entity_from_render_mesh(mesh);
-            get_entity_model(ent, model);
+            glm_translated_to(model, sokol->default_view.position, model);
             
             glm_mat4_mul(sokol->light_view_projections[slice_id], model, shadow_params.light_view_mvp);
             sg_apply_uniforms(UB_vs_shadow_params, &SG_RANGE(shadow_params));
@@ -553,7 +598,7 @@ static void render_mesh_for(int PASS, int binding_idx, int slice_id, skate_rende
     }
 }
 
-static bool apply_uniforms_for(const int PASS, int idx, int i, skate_render_mesh_t *mesh) {
+static bool apply_skeleton_uniforms_for(const int PASS, int idx, int i, skate_render_mesh_t *mesh) {
     skate_sokol_t *sokol = get_sokol();
     
     bool result = false;
@@ -566,6 +611,9 @@ static bool apply_uniforms_for(const int PASS, int idx, int i, skate_render_mesh
     
     sg_pass pass = {};
     switch(PASS) {
+        
+        // TODO() vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+        // skeleton shader which doesnt exist yet.
         case RENDER_PASS::TYPE_STATIC: {
             texture_static_mesh_vs_params_t params = {};
             
@@ -597,7 +645,64 @@ static bool apply_uniforms_for(const int PASS, int idx, int i, skate_render_mesh
             glm_normalize_to(sokol->render_pass[PASS].light_dir, fs_params.light_dir);
             sg_apply_uniforms(UB_texture_static_mesh_fs_params, &SG_RANGE(fs_params));
             
-            render_mesh_for(PASS, idx, /*slice_id*/0, mesh);
+            result = true;
+        } break;
+        case RENDER_PASS::TYPE_SHADOW: {
+            
+            result = true;
+        } break;
+        case RENDER_PASS::TYPE_DYNAMIC: {
+        } break;
+    }
+    
+    return result;
+}
+
+static bool apply_uniforms_for(const int PASS, int idx, int i, skate_render_mesh_t *mesh) {
+    skate_sokol_t *sokol = get_sokol();
+    
+    bool result = false;
+    
+    mat4 view_projection;
+    glm_mat4_identity(view_projection);
+    {
+        glm_mat4_mul(sokol->default_view.perspective, sokol->default_view.view, view_projection);
+    }
+    
+    sg_pass pass = {};
+    switch(PASS) {
+        case RENDER_PASS::TYPE_STATIC: {
+            texture_static_mesh_vs_params_t params = {};
+            
+            skate_entity_t *ent = get_entity_from_render_mesh(mesh);
+            get_entity_model(ent, params.model);
+            
+            glm_mat4_mul(view_projection, params.model, params.mvp);
+            sg_apply_uniforms(UB_texture_static_mesh_vs_params, &SG_RANGE(params));
+            
+            // fs
+            texture_static_mesh_fs_params_t fs_params = {};
+            glm_vec3_copy(sokol->render_pass[PASS].light_pos, fs_params.eye_pos);
+            glm_vec3_copy(sokol->render_pass[PASS].light_dir, fs_params.light_dir);
+            glm_vec3_copy(vec3{1.f,1.f,1.f}, fs_params.light_color);
+            glm_vec3_copy(vec3{0.5f, 0.5f, 0.5f}, fs_params.light_ambient);
+            
+            for(int cascade_idx = 0; cascade_idx < CASCADE_LEVEL_COUNT; ++cascade_idx) {
+                glm_mat4_copy(sokol->light_view_projections[cascade_idx], fs_params.light_view_proj[cascade_idx]);
+                
+                vec4 cssms = {0};
+                cssms[0] = map_sizes[0];
+                cssms[1] = map_sizes[0];
+                cssms[2] = CAMERA_FAR_PLANE;
+                cssms[3] = shadow_cascade_levels[i];
+                glm_vec4_copy(cssms, fs_params.cascade_splits_shadow_map_size[i]);
+            }
+            
+            glm_mat4_copy(sokol->default_view.view, fs_params.view);
+            glm_normalize_to(sokol->render_pass[PASS].light_dir, fs_params.light_dir);
+            sg_apply_uniforms(UB_texture_static_mesh_fs_params, &SG_RANGE(fs_params));
+            
+            render_mesh_for(PASS, idx, /*slice_id*/i, mesh);
             
             result = true;
         } break;
@@ -740,14 +845,14 @@ static void render_loop() {
     }
     
     // shadow cascades
-    for(int i = 0; i < CASCADE_LEVEL_COUNT + 1; ++i) {
-        glm_mat4_identity(sokol->light_view_projections[i]);
-        if(i == 0) {
-            get_light_view_projection_matrix(sokol->light_view_projections[i], CAMERA_NEAR_PLANE, shadow_cascade_levels[i], i);
-        } else if(i < CASCADE_LEVEL_COUNT) {
-            get_light_view_projection_matrix(sokol->light_view_projections[i], shadow_cascade_levels[i - 1], shadow_cascade_levels[i], i);
+    for(int cascade_idx = 0; cascade_idx < CASCADE_LEVEL_COUNT + 1; ++cascade_idx) {
+        glm_mat4_identity(sokol->light_view_projections[cascade_idx]);
+        if(cascade_idx == 0) {
+            get_light_view_projection_matrix(sokol->light_view_projections[cascade_idx], CAMERA_NEAR_PLANE, shadow_cascade_levels[cascade_idx], cascade_idx);
+        } else if(cascade_idx < CASCADE_LEVEL_COUNT) {
+            get_light_view_projection_matrix(sokol->light_view_projections[cascade_idx], shadow_cascade_levels[cascade_idx - 1], shadow_cascade_levels[cascade_idx], cascade_idx);
         } else {
-            get_light_view_projection_matrix(sokol->light_view_projections[i], shadow_cascade_levels[i - 1], CAMERA_FAR_PLANE, i);
+            get_light_view_projection_matrix(sokol->light_view_projections[cascade_idx], shadow_cascade_levels[cascade_idx - 1], CAMERA_FAR_PLANE, cascade_idx);
         }
     }
     
@@ -769,6 +874,17 @@ static void render_loop() {
                         if(apply_uniforms_for(pass_idx, p, i, mesh)) {
                             render_mesh_for(RENDER_PASS::TYPE_SHADOW, p, i, mesh); 
                         }
+                        /*
+                        if(mesh->bind.bindings[p].animated) {
+                            tick_animation_track(&mesh->bind.bindings[p].render_anim, sapp_frame_duration());
+                            
+                            if(apply_skeleton_uniforms_for(pass_idx, p, i, mesh)) {
+                                render_mesh_for(RENDER_PASS::TYPE_SHADOW, p, i, mesh); 
+                            }
+                        } else {
+                            
+                        }
+*/
                     }
                 }
                 
@@ -785,11 +901,21 @@ static void render_loop() {
                 for(int p = 0; p < mesh->bind.bindings_count; ++p) {
                     if(apply_uniforms_for(pass_idx, p, -1, mesh)) {}
                 }
+                
+                /*
+                if(mesh->bind.bindings[m].animated) {
+                    tick_animation_track(&mesh->bind.bindings[m].render_anim, sapp_frame_duration());
+                    
+                    if(apply_skeleton_uniforms_for(pass_idx, m, 0, mesh)) {
+                        render_mesh_for(RENDER_PASS::TYPE_STATIC, m, 0, mesh); 
+                    }
+                } else {
+                } */
             }
-            
-            sg_end_pass();
-            
         }
+        
+        sg_end_pass();
+        
     }
     sg_commit();
 }
